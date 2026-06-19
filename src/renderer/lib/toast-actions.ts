@@ -4,10 +4,6 @@ export function notifyDeleted(subject: string): void {
   toast.success(`${subject} deleted`);
 }
 
-export function notifyCleared(subject: string): void {
-  toast.success(`${subject} cleared`);
-}
-
 export function notifyRemoved(subject: string): void {
   toast.success(`${subject} removed`);
 }
@@ -29,7 +25,6 @@ export async function clearCapturedRequests(options?: { toast?: boolean }): Prom
   const showToast = options?.toast ?? true;
   try {
     await window.yanshuf.capture.clear();
-    if (showToast) notifyCleared('Captured requests');
   } catch (error) {
     if (showToast) notifyActionFailed('clear captured requests', error);
     else throw error;
