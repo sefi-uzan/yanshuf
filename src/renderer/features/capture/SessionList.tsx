@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CaptureEntrySummary } from '../../../shared/types';
 import { Badge } from '@/components/ui/badge';
@@ -6,12 +6,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
 import { formatDuration } from '../../../shared/utils';
 import { CAPTURE_DRAG_MIME } from '../../../shared/dnd';
-import { Ellipsis, Lock, PenLine, Zap } from 'lucide-react';
+import { exportCurl } from '../../../shared/composer-curl';
+import { captureToComposerRequest } from '../composer/captureToComposer';
+import { Copy, Ellipsis, Lock, PenLine, Zap } from 'lucide-react';
 
 interface SessionListProps {
   entries: CaptureEntrySummary[];
@@ -55,6 +62,7 @@ export function SessionList({
 }: SessionListProps) {
   const filtered = entries.filter((e) => matchesSearch(e, searchQuery));
   const parentRef = useRef<HTMLDivElement>(null);
+  const prevEntryCountRef = useRef(entries.length);
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
@@ -62,9 +70,21 @@ export function SessionList({
     estimateSize: () => 36,
     overscan: 10,
   });
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
+
+  useEffect(() => {
+    const prevCount = prevEntryCountRef.current;
+    if (entries.length > prevCount && filtered.length > 0) {
+      requestAnimationFrame(() => {
+        virtualizerRef.current.scrollToIndex(filtered.length - 1, { align: 'end' });
+      });
+    }
+    prevEntryCountRef.current = entries.length;
+  }, [entries.length, filtered.length]);
 
   return (
-    <div className="flex h-full flex-col border-r">
+    <div className="flex h-full flex-col border-r" data-tour="capture-area">
       <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
@@ -81,6 +101,7 @@ export function SessionList({
           {virtualizer.getVirtualItems().map((virtualRow) => {
               const entry = filtered[virtualRow.index];
               const isAutoResponded = Boolean(entry.matchedRuleId);
+              const isFromComposer = Boolean(entry.fromComposer);
               return (
                 <div
                   key={entry.id}
@@ -104,14 +125,18 @@ export function SessionList({
                       ? 'Drag to Composer or Rules'
                       : isAutoResponded
                         ? 'Matched by Auto Responder'
-                        : undefined
+                        : isFromComposer
+                          ? 'Sent from Composer'
+                          : undefined
                   }
                   className={cn(
                     'absolute left-0 top-0 grid w-full cursor-default items-center gap-2 border-b px-3 py-2 text-left text-xs hover:bg-accent/50 hover:[&_.capture-row-menu-hint]:opacity-80',
                     SESSION_LIST_GRID,
                     isAutoResponded && 'border-l-2 border-l-amber-500 bg-amber-500/[0.08] hover:bg-amber-500/15',
-                    selectedId === entry.id && 'bg-accent',
+                    isFromComposer && !isAutoResponded && 'border-l-2 border-l-primary bg-primary/[0.08] hover:bg-primary/15',
+                    selectedId === entry.id && !isAutoResponded && !isFromComposer && 'bg-accent',
                     selectedId === entry.id && isAutoResponded && 'bg-amber-500/20',
+                    selectedId === entry.id && isFromComposer && !isAutoResponded && 'bg-primary/20',
                   )}
                   style={{
                     height: `${virtualRow.size}px`,
@@ -129,6 +154,9 @@ export function SessionList({
                   <span className="flex min-w-0 items-center gap-1 font-mono">
                     {isAutoResponded && (
                       <Zap className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                    )}
+                    {isFromComposer && !isAutoResponded && (
+                      <PenLine className="h-3 w-3 shrink-0 text-primary" />
                     )}
                     {entry.tls && <Lock className="h-3 w-3 shrink-0" />}
                     <span className="truncate">{entry.host}{entry.path}</span>
@@ -165,6 +193,36 @@ export function SessionList({
                           <Zap className="mr-2 h-4 w-4" />
                           Create Rule
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Copy
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem
+                              onSelect={() => void copyToClipboard(urlWithoutQuery(entry.url))}
+                            >
+                              URL (no query)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void copyToClipboard(entry.url)}>
+                              Full URL
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void (async () => {
+                                  const full = await window.yanshuf.capture.get(entry.id);
+                                  if (!full) return;
+                                  await copyToClipboard(
+                                    exportCurl(captureToComposerRequest(full)),
+                                  );
+                                })();
+                              }}
+                            >
+                              cURL
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </span>
@@ -178,6 +236,11 @@ export function SessionList({
         {entries.some((e) => e.matchedRuleId) && (
           <span className="ml-2 text-amber-600 dark:text-amber-400">
             · {entries.filter((e) => e.matchedRuleId).length} mocked
+          </span>
+        )}
+        {entries.some((e) => e.fromComposer) && (
+          <span className="ml-2 text-primary">
+            · {entries.filter((e) => e.fromComposer).length} composed
           </span>
         )}
       </div>

@@ -9,6 +9,10 @@ import {
   type PendingCapture,
 } from './capture-store';
 import { headersToRecord } from '../../shared/utils';
+import {
+  isComposerCaptureHeader,
+  stripComposerCaptureHeader,
+} from '../../shared/composer';
 import { installProxyConsoleFilter, isBenignProxyError, uninstallProxyConsoleFilter } from './console-filter';
 
 export interface ProxyServerOptions {
@@ -18,6 +22,7 @@ export interface ProxyServerOptions {
   maxBodySize: number;
   captureStore: CaptureStore;
   autoResponder: AutoResponderEngine;
+  shouldCapture?: (url: string) => boolean;
 }
 
 export class ProxyServer extends EventEmitter {
@@ -58,7 +63,16 @@ export class ProxyServer extends EventEmitter {
         const req = ctx.clientToProxyRequest;
         const method = req.method ?? 'GET';
         const url = req.url ?? '/';
-        const headers = headersToRecord(req.headers);
+        const rawHeaders = headersToRecord(req.headers);
+        const fromComposer = isComposerCaptureHeader(rawHeaders);
+        if (fromComposer) {
+          for (const key of Object.keys(req.headers)) {
+            if (key.toLowerCase() === 'x-yanshuf-composer') {
+              delete req.headers[key];
+            }
+          }
+        }
+        const headers = fromComposer ? stripComposerCaptureHeader(rawHeaders) : rawHeaders;
         const info = extractRequestInfo(method, url, req.headers, ctx.isSSL);
         const id = uuidv4();
 
@@ -73,6 +87,7 @@ export class ProxyServer extends EventEmitter {
           protocol: detectProtocol(req.httpVersion, ctx.isSSL),
           requestHeaders: headers,
           requestChunks: [],
+          fromComposer,
         };
 
         this.pending.set(id, pending);
@@ -113,8 +128,10 @@ export class ProxyServer extends EventEmitter {
             responseBody,
             this.options.maxBodySize,
           );
-          this.options.captureStore.add(entry);
-          this.emit('capture', entry);
+          if (!this.options.shouldCapture || this.options.shouldCapture(stored.url)) {
+            this.options.captureStore.add(entry);
+            this.emit('capture', entry);
+          }
           cb();
         });
 
@@ -179,8 +196,10 @@ export class ProxyServer extends EventEmitter {
         synthetic.body,
         this.options.maxBodySize,
       );
-      this.options.captureStore.add(entry);
-      this.emit('capture', entry);
+      if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+        this.options.captureStore.add(entry);
+        this.emit('capture', entry);
+      }
     } catch (err) {
       this.emit('error', err);
     }
@@ -201,7 +220,9 @@ export class ProxyServer extends EventEmitter {
     });
   }
 
-  updateOptions(partial: Partial<Pick<ProxyServerOptions, 'port' | 'maxBodySize'>>): void {
+  updateOptions(
+    partial: Partial<Pick<ProxyServerOptions, 'port' | 'maxBodySize' | 'shouldCapture'>>,
+  ): void {
     this.options = { ...this.options, ...partial };
   }
 }

@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react';
+import { PenLine, Zap } from 'lucide-react';
 import type { CaptureEntry, HttpMessage } from '../../../shared/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -86,6 +86,12 @@ interface CaptureDetailProps {
 export function RequestPane({ entry }: CaptureDetailProps) {
   return (
     <div className="flex h-full flex-col">
+      {entry?.fromComposer && (
+        <div className="flex items-center gap-1.5 border-b bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+          <PenLine className="h-3.5 w-3.5" />
+          Composer — sent request
+        </div>
+      )}
       {entry?.matchedRuleId && (
         <div className="flex items-center gap-1.5 border-b bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
           <Zap className="h-3.5 w-3.5" />
