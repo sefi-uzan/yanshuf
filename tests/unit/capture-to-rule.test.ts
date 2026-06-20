@@ -47,7 +47,6 @@ describe('captureToAutoResponderRule', () => {
 
     expect(rule.order).toBe(3);
     expect(rule.name).toBe('api.example.com');
-    expect(rule.match.method).toBe('GET');
     expect(rule.match.urlRegex).toBe('https://api\\.example\\.com/v1/users\\?id=1');
     expect(rule.response.status).toBe(200);
     expect(rule.response.headers).toEqual({ 'content-type': 'application/json' });

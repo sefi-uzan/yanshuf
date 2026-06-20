@@ -169,6 +169,17 @@ export class SystemProxyManager {
     return this.state.enabled;
   }
 
+  async updatePort(host: string, port: number): Promise<void> {
+    if (process.platform !== 'darwin' || !this.state.enabled) return;
+
+    const services =
+      this.snapshots.size > 0 ? [...this.snapshots.keys()] : await getNetworkServicesForProxy();
+
+    for (const service of services) {
+      await enableProxyForService(service, host, port);
+    }
+  }
+
   getState(): SystemProxyState {
     return this.state;
   }

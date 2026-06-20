@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CaptureFilterMode, CertStatus } from '../../../shared/types';
+import { DEFAULT_SETTINGS } from '../../../shared/types';
+import { SHORTCUTS, formatShortcutParts } from '../../../shared/shortcuts';
 import { Button } from '@/components/ui/button';
+import { Kbd, useShortcutHints } from '@/components/shortcut-hints';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -23,6 +26,16 @@ interface SettingsPanelProps {
   certStatus?: CertStatus | null;
 }
 
+const BYTES_PER_MB = 1024 * 1024;
+
+function bytesToMb(bytes: number): number {
+  return Math.round(bytes / BYTES_PER_MB);
+}
+
+function mbToBytes(mb: number): number {
+  return Math.max(1, mb) * BYTES_PER_MB;
+}
+
 const NAV_ITEMS: {
   value: SettingsTab;
   label: string;
@@ -40,16 +53,19 @@ export function SettingsPanel({
   onOpenCertOnboarding,
   certStatus,
 }: SettingsPanelProps) {
-  const [port, setPort] = useState(8888);
-  const [ringBufferSize, setRingBufferSize] = useState(10000);
+  const [port, setPort] = useState(DEFAULT_SETTINGS.port);
+  const [ringBufferSize, setRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
+  const [maxBodySizeMb, setMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
   const [filterMode, setFilterMode] = useState<CaptureFilterMode>('exclude');
   const [filterUrls, setFilterUrls] = useState('');
-  const [initialPort, setInitialPort] = useState(8888);
-  const [initialRingBufferSize, setInitialRingBufferSize] = useState(10000);
+  const [initialPort, setInitialPort] = useState(DEFAULT_SETTINGS.port);
+  const [initialRingBufferSize, setInitialRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
+  const [initialMaxBodySizeMb, setInitialMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
   const [initialFilterMode, setInitialFilterMode] = useState<CaptureFilterMode>('exclude');
   const [initialFilterUrls, setInitialFilterUrls] = useState('');
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
   const [saving, setSaving] = useState(false);
+  const { hintsVisible } = useShortcutHints();
 
   useEffect(() => {
     if (open) {
@@ -57,10 +73,12 @@ export function SettingsPanel({
       void window.yanshuf.settings.get().then((s) => {
         setPort(s.port);
         setRingBufferSize(s.ringBufferSize);
+        setMaxBodySizeMb(bytesToMb(s.maxBodySize));
         setFilterMode(s.captureFilter.mode);
         setFilterUrls(s.captureFilter.urls);
         setInitialPort(s.port);
         setInitialRingBufferSize(s.ringBufferSize);
+        setInitialMaxBodySizeMb(bytesToMb(s.maxBodySize));
         setInitialFilterMode(s.captureFilter.mode);
         setInitialFilterUrls(s.captureFilter.urls);
       });
@@ -71,15 +89,18 @@ export function SettingsPanel({
     () =>
       port !== initialPort ||
       ringBufferSize !== initialRingBufferSize ||
+      maxBodySizeMb !== initialMaxBodySizeMb ||
       filterMode !== initialFilterMode ||
       filterUrls !== initialFilterUrls,
     [
       port,
       ringBufferSize,
+      maxBodySizeMb,
       filterMode,
       filterUrls,
       initialPort,
       initialRingBufferSize,
+      initialMaxBodySizeMb,
       initialFilterMode,
       initialFilterUrls,
     ],
@@ -88,11 +109,12 @@ export function SettingsPanel({
   const reset = () => {
     setPort(initialPort);
     setRingBufferSize(initialRingBufferSize);
+    setMaxBodySizeMb(initialMaxBodySizeMb);
     setFilterMode(initialFilterMode);
     setFilterUrls(initialFilterUrls);
   };
 
-  const save = async () => {
+  const save = useCallback(async () => {
     setSaving(true);
     try {
       const filtersChanged = filterMode !== initialFilterMode || filterUrls !== initialFilterUrls;
@@ -101,6 +123,7 @@ export function SettingsPanel({
         ...current,
         port,
         ringBufferSize,
+        maxBodySize: mbToBytes(maxBodySizeMb),
         captureFilter: {
           mode: filterMode,
           urls: filterUrls,
@@ -108,6 +131,7 @@ export function SettingsPanel({
       });
       setInitialPort(port);
       setInitialRingBufferSize(ringBufferSize);
+      setInitialMaxBodySizeMb(maxBodySizeMb);
       setInitialFilterMode(filterMode);
       setInitialFilterUrls(filterUrls);
       if (filtersChanged) {
@@ -120,17 +144,45 @@ export function SettingsPanel({
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    filterMode,
+    filterUrls,
+    initialFilterMode,
+    initialFilterUrls,
+    maxBodySizeMb,
+    onOpenChange,
+    port,
+    ringBufferSize,
+  ]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === 's' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (saving) return;
+        if (isDirty) {
+          void save();
+        } else {
+          onOpenChange(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, isDirty, saving, save, onOpenChange]);
 
   const activeNav = NAV_ITEMS.find((item) => item.value === tab);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-4rem)] max-w-2xl gap-0 overflow-hidden p-0">
+      <DialogContent className="flex h-[min(36rem,calc(100vh-4rem))] max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as SettingsTab)}
-          className="flex min-h-[min(480px,calc(100vh-4rem))] max-h-[calc(100vh-4rem)]"
+          className="flex h-full min-h-0 flex-1"
         >
           <aside className="flex w-44 shrink-0 flex-col border-r bg-muted/30">
             <DialogHeader className="space-y-0.5 border-b px-3 py-3 text-left">
@@ -154,14 +206,14 @@ export function SettingsPanel({
             </TabsList>
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="border-b px-6 py-3">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="shrink-0 border-b px-6 py-3">
               <h2 className="text-sm font-semibold">{activeNav?.label}</h2>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <TabsContent value="general" className="mt-0 space-y-6 focus-visible:outline-none">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <label htmlFor="proxy-port" className="space-y-1">
                     <span className="text-xs text-muted-foreground">Port</span>
                     <Input
@@ -184,6 +236,18 @@ export function SettingsPanel({
                       className="h-8"
                       value={ringBufferSize}
                       onChange={(e) => setRingBufferSize(Number(e.target.value))}
+                    />
+                  </label>
+                  <label htmlFor="max-body-size" className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Max body size (MB)</span>
+                    <Input
+                      id="max-body-size"
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="h-8"
+                      value={maxBodySizeMb}
+                      onChange={(e) => setMaxBodySizeMb(Number(e.target.value))}
                     />
                   </label>
                 </div>
@@ -212,8 +276,14 @@ export function SettingsPanel({
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Saving…
                       </>
+                    ) : hintsVisible ? (
+                      <span className="inline-flex items-center gap-0.5" aria-hidden>
+                        {formatShortcutParts(SHORTCUTS.saveSettings.keys).map((part, index) => (
+                          <Kbd key={`${part}-${index}`}>{part}</Kbd>
+                        ))}
+                      </span>
                     ) : (
-                      'Save changes'
+                      'Save'
                     )}
                   </Button>
                 </SettingsFooter>

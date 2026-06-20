@@ -3,14 +3,18 @@ import path from 'node:path';
 import type {
   AppSettings,
   AutoResponderRule,
+  BreakpointSnapshot,
   ComposedEntry,
-  ComposerCollection,
   ComposerRequest,
+  InterceptModifications,
+  InterceptRule,
   MenuAction,
 } from '../shared/types';
 import { DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS } from '../shared/types';
 import { shouldCaptureUrl } from '../shared/url-filter';
 import { AutoResponderEngine } from './auto-responder/engine';
+import { BreakpointManager } from './intercept/breakpoint-manager';
+import { InterceptEngine } from './intercept/engine';
 import { CertificateManager } from './cert/manager';
 import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
@@ -33,6 +37,8 @@ let store: JsonFileStore;
 let settings: AppSettings;
 let captureStore: CaptureStore;
 let autoResponder: AutoResponderEngine;
+let interceptEngine: InterceptEngine;
+let breakpointManager: BreakpointManager;
 let proxyServer: ProxyServer;
 let certManager: CertificateManager;
 let systemProxy: SystemProxyManager;
@@ -79,6 +85,18 @@ async function loadState(): Promise<void> {
   const rules = await store.read<AutoResponderRule[]>('rules.json', []);
   autoResponder.setRules(rules);
 
+  interceptEngine = new InterceptEngine();
+  const interceptRules = await store.read<InterceptRule[]>('intercept.json', []);
+  interceptEngine.setRules(interceptRules);
+
+  breakpointManager = new BreakpointManager();
+  breakpointManager.on('hit', (snapshot: BreakpointSnapshot) => {
+    broadcastCaptureUpdate(true);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.BREAKPOINT_HIT, snapshot);
+    }
+  });
+
   certManager = new CertificateManager(store.getCertsDir());
   await certManager.ensureCaGenerated();
   systemProxy = new SystemProxyManager();
@@ -91,6 +109,8 @@ async function loadState(): Promise<void> {
     maxBodySize: settings.maxBodySize,
     captureStore,
     autoResponder,
+    interceptEngine,
+    breakpointManager,
     shouldCapture: buildShouldCapture(),
   });
 
@@ -376,6 +396,25 @@ function registerIpc(): void {
     return rules;
   });
 
+  ipcMain.handle(IPC_CHANNELS.INTERCEPT_GET, () => interceptEngine.getRules());
+
+  ipcMain.handle(IPC_CHANNELS.INTERCEPT_SAVE, async (_e, rules: InterceptRule[]) => {
+    interceptEngine.setRules(rules);
+    await store.write('intercept.json', rules);
+    return rules;
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.BREAKPOINT_CONTINUE,
+    (_e, id: string, modifications?: InterceptModifications) => {
+      breakpointManager.continue(id, modifications);
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.BREAKPOINT_ABORT, (_e, id: string) => {
+    breakpointManager.abort(id);
+  });
+
   ipcMain.handle(IPC_CHANNELS.COMPOSER_SEND, async (_e, req: ComposerRequest) => {
     try {
       if (!proxyServer.isRunning()) {
@@ -398,14 +437,6 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.COMPOSER_PARSE_CURL, (_e, curl: string) => parseCurl(curl));
 
   ipcMain.handle(IPC_CHANNELS.COMPOSER_EXPORT_CURL, (_e, req: ComposerRequest) => exportCurl(req));
-
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_COLLECTIONS_GET, () =>
-    store.read<ComposerCollection[]>('composer/collections.json', []),
-  );
-
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_COLLECTIONS_SAVE, (_e, collections: ComposerCollection[]) =>
-    store.write('composer/collections.json', collections),
-  );
 
   ipcMain.handle(IPC_CHANNELS.COMPOSER_COMPOSED_GET, () =>
     store.read<ComposedEntry[]>('composer/composed.json', []),
@@ -431,6 +462,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings);
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
+    const prevPort = settings.port;
     settings = {
       ...next,
       captureFilter: {
@@ -440,9 +472,26 @@ function registerIpc(): void {
     };
     captureStore.setMaxSize(settings.ringBufferSize);
     proxyServer.updateOptions({
+      port: settings.port,
       maxBodySize: settings.maxBodySize,
       shouldCapture: buildShouldCapture(),
     });
+
+    if (settings.port !== prevPort) {
+      if (systemProxy.isEnabled()) {
+        await systemProxy.updatePort('127.0.0.1', settings.port);
+      }
+      if (proxyServer.isRunning()) {
+        await proxyServer.stop();
+        try {
+          await proxyServer.start();
+          settings.proxyRunning = true;
+        } catch {
+          settings.proxyRunning = false;
+        }
+      }
+    }
+
     await saveSettings();
     return settings;
   });

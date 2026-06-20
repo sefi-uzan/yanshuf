@@ -1,5 +1,8 @@
 export type Protocol = 'http1' | 'http2' | 'connect';
 
+export type InterceptMode = 'rewrite' | 'breakpoint';
+export type InterceptPhase = 'request' | 'response';
+
 export interface BodyRef {
   size: number;
   preview?: string;
@@ -29,11 +32,11 @@ export interface CaptureEntrySummary {
   fromComposer?: boolean;
   requestBodySize: number;
   responseBodySize: number;
-}
-
-export interface CaptureEntry extends CaptureEntrySummary {
-  client: HttpMessage;
-  server: HttpMessage;
+  awaitingBreakpoint?: {
+    breakpointId: string;
+    phase: InterceptPhase;
+    ruleName: string;
+  };
 }
 
 export interface AutoResponderRule {
@@ -43,8 +46,6 @@ export interface AutoResponderRule {
   order: number;
   match: {
     urlRegex?: string;
-    method?: string;
-    headerRegex?: { name: string; pattern: string }[];
   };
   response: {
     status: number;
@@ -52,6 +53,50 @@ export interface AutoResponderRule {
     body?: { type: 'inline'; content: string } | { type: 'file'; path: string };
     delayMs?: number;
   };
+}
+
+export interface InterceptModifications {
+  headers?: Record<string, string>;
+  body?: string;
+  status?: number;
+}
+
+export interface InterceptRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  order: number;
+  mode: InterceptMode;
+  phase: InterceptPhase;
+  match: {
+    urlRegex?: string;
+  };
+  request?: InterceptModifications;
+  response?: InterceptModifications;
+}
+
+export interface BreakpointSnapshot {
+  id: string;
+  captureId: string;
+  startedAt: number;
+  ruleId: string;
+  ruleName: string;
+  phase: InterceptPhase;
+  method: string;
+  url: string;
+  status?: number;
+  headers: Record<string, string>;
+  body: string;
+  modifications?: InterceptModifications;
+}
+
+export type BreakpointDecision =
+  | { action: 'continue'; modifications?: InterceptModifications }
+  | { action: 'abort' };
+
+export interface CaptureEntry extends CaptureEntrySummary {
+  client: HttpMessage;
+  server: HttpMessage;
 }
 
 export interface ComposerRequest {
@@ -67,12 +112,6 @@ export interface ComposerResponse {
   headers: Record<string, string>;
   body: string;
   durationMs: number;
-}
-
-export interface ComposerCollection {
-  id: string;
-  name: string;
-  requests: ComposerRequest[];
 }
 
 export interface ComposedEntry {
@@ -156,11 +195,14 @@ export const IPC_CHANNELS = {
   SYSTEM_PROXY_DISABLE: 'system-proxy:disable',
   RULES_GET: 'rules:get',
   RULES_SAVE: 'rules:save',
+  INTERCEPT_GET: 'intercept:get',
+  INTERCEPT_SAVE: 'intercept:save',
+  BREAKPOINT_CONTINUE: 'breakpoint:continue',
+  BREAKPOINT_ABORT: 'breakpoint:abort',
+  BREAKPOINT_HIT: 'breakpoint:hit',
   COMPOSER_SEND: 'composer:send',
   COMPOSER_PARSE_CURL: 'composer:parse-curl',
   COMPOSER_EXPORT_CURL: 'composer:export-curl',
-  COMPOSER_COLLECTIONS_GET: 'composer:collections-get',
-  COMPOSER_COLLECTIONS_SAVE: 'composer:collections-save',
   COMPOSER_COMPOSED_GET: 'composer:composed-get',
   COMPOSER_COMPOSED_SAVE: 'composer:composed-save',
   DIALOG_PICK_FILE: 'dialog:pick-file',

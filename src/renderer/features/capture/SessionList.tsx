@@ -18,7 +18,7 @@ import { formatDuration } from '../../../shared/utils';
 import { CAPTURE_DRAG_MIME } from '../../../shared/dnd';
 import { exportCurl } from '../../../shared/composer-curl';
 import { captureToComposerRequest } from '../composer/captureToComposer';
-import { Copy, Ellipsis, Lock, PenLine, Zap } from 'lucide-react';
+import { Copy, Ellipsis, Lock, PauseCircle, PenLine, Zap } from 'lucide-react';
 
 interface SessionListProps {
   entries: CaptureEntrySummary[];
@@ -98,7 +98,7 @@ export function SessionList({
       <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
-            'sticky top-0 z-10 grid gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground',
+            'sticky top-0 z-10 grid gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground',
             SESSION_LIST_GRID,
           )}
         >
@@ -111,6 +111,7 @@ export function SessionList({
           {virtualizer.getVirtualItems().map((virtualRow) => {
               const entry = filtered[virtualRow.index];
               const isAutoResponded = Boolean(entry.matchedRuleId);
+              const isAwaitingBreakpoint = Boolean(entry.awaitingBreakpoint);
               const isFromComposer = Boolean(entry.fromComposer);
               return (
                 <div
@@ -133,6 +134,8 @@ export function SessionList({
                   title={
                     draggable
                       ? 'Drag to Composer or Rules'
+                      : isAwaitingBreakpoint
+                        ? 'Paused at breakpoint'
                       : isAutoResponded
                         ? 'Matched by Auto Responder'
                         : isFromComposer
@@ -142,11 +145,13 @@ export function SessionList({
                   className={cn(
                     'absolute left-0 top-0 grid w-full cursor-default items-center gap-2 border-b px-3 py-2 text-left text-xs hover:bg-accent/50 hover:[&_.capture-row-menu-hint]:opacity-80',
                     SESSION_LIST_GRID,
-                    isAutoResponded && 'border-l-2 border-l-amber-500 bg-amber-500/[0.08] hover:bg-amber-500/15',
-                    isFromComposer && !isAutoResponded && 'border-l-2 border-l-primary bg-primary/[0.08] hover:bg-primary/15',
-                    selectedId === entry.id && !isAutoResponded && !isFromComposer && 'bg-accent',
-                    selectedId === entry.id && isAutoResponded && 'bg-amber-500/20',
-                    selectedId === entry.id && isFromComposer && !isAutoResponded && 'bg-primary/20',
+                    isAwaitingBreakpoint && 'border-l-2 border-l-sky-500 bg-sky-500/[0.08] hover:bg-sky-500/15',
+                    isAutoResponded && !isAwaitingBreakpoint && 'border-l-2 border-l-amber-500 bg-amber-500/[0.08] hover:bg-amber-500/15',
+                    isFromComposer && !isAutoResponded && !isAwaitingBreakpoint && 'border-l-2 border-l-primary bg-primary/[0.08] hover:bg-primary/15',
+                    selectedId === entry.id && !isAutoResponded && !isFromComposer && !isAwaitingBreakpoint && 'bg-accent',
+                    selectedId === entry.id && isAwaitingBreakpoint && 'bg-sky-500/20',
+                    selectedId === entry.id && isAutoResponded && !isAwaitingBreakpoint && 'bg-amber-500/20',
+                    selectedId === entry.id && isFromComposer && !isAutoResponded && !isAwaitingBreakpoint && 'bg-primary/20',
                   )}
                   style={{
                     height: `${virtualRow.size}px`,
@@ -162,7 +167,10 @@ export function SessionList({
                     </Badge>
                   </span>
                   <span className="flex min-w-0 items-center gap-1 font-mono">
-                    {isAutoResponded && (
+                    {isAwaitingBreakpoint && (
+                      <PauseCircle className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400" />
+                    )}
+                    {isAutoResponded && !isAwaitingBreakpoint && (
                       <Zap className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
                     )}
                     {isFromComposer && !isAutoResponded && (
@@ -173,10 +181,10 @@ export function SessionList({
                   </span>
                   <span className="flex items-center justify-center">
                     <Badge
-                      variant={statusVariant(entry.status)}
+                      variant={isAwaitingBreakpoint ? 'secondary' : statusVariant(entry.status)}
                       className="h-4 min-w-[2.25rem] px-1 py-0 font-mono text-[10px] leading-none tabular-nums"
                     >
-                      {entry.status || '—'}
+                      {isAwaitingBreakpoint ? 'BP' : entry.status || '—'}
                     </Badge>
                   </span>
                   <span className={cn(TIME_CELL, 'text-muted-foreground')}>
@@ -241,7 +249,7 @@ export function SessionList({
           })}
         </div>
       </div>
-      <div className="border-t px-3 py-1 text-xs text-muted-foreground">
+      <div className="border-t bg-muted/10 px-3 py-1.5 text-xs text-muted-foreground">
         {filtered.length} / {entries.length} requests
         {entries.some((e) => e.matchedRuleId) && (
           <span className="ml-2 text-amber-600 dark:text-amber-400">

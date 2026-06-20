@@ -1,13 +1,6 @@
 import fs from 'node:fs/promises';
 import type { AutoResponderRule } from '../../shared/types';
 
-export interface MatchContext {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body: string;
-}
-
 export class AutoResponderEngine {
   private rules: AutoResponderRule[] = [];
 
@@ -19,38 +12,22 @@ export class AutoResponderEngine {
     return this.rules;
   }
 
-  findMatch(ctx: MatchContext): AutoResponderRule | undefined {
+  findMatch(url: string): AutoResponderRule | undefined {
     for (const rule of this.rules) {
       if (!rule.enabled) continue;
-      if (this.matches(rule, ctx)) return rule;
+      if (this.matchesUrl(rule, url)) return rule;
     }
     return undefined;
   }
 
-  private matches(rule: AutoResponderRule, ctx: MatchContext): boolean {
-    const { match } = rule;
-    if (match.method && match.method.toUpperCase() !== ctx.method.toUpperCase()) {
+  private matchesUrl(rule: AutoResponderRule, url: string): boolean {
+    const pattern = rule.match.urlRegex?.trim();
+    if (!pattern) return false;
+    try {
+      return new RegExp(pattern, 'i').test(url);
+    } catch {
       return false;
     }
-    if (match.urlRegex) {
-      try {
-        if (!new RegExp(match.urlRegex, 'i').test(ctx.url)) return false;
-      } catch {
-        return false;
-      }
-    }
-    if (match.headerRegex) {
-      for (const hr of match.headerRegex) {
-        const value = ctx.headers[hr.name.toLowerCase()] ?? ctx.headers[hr.name];
-        if (!value) return false;
-        try {
-          if (!new RegExp(hr.pattern, 'i').test(value)) return false;
-        } catch {
-          return false;
-        }
-      }
-    }
-    return true;
   }
 
   async buildResponse(rule: AutoResponderRule): Promise<{

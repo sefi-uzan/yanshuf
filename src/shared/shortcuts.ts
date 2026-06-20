@@ -13,6 +13,7 @@ export const SHORTCUTS = {
   clearSession: { id: 'clearSession', label: 'Clear captured requests', keys: ['mod', 'X'] },
   toggleCapture: { id: 'toggleCapture', label: 'Toggle capture', keys: ['mod', 'shift', 'P'] },
   settings: { id: 'settings', label: 'Settings', keys: ['mod', 'S'] },
+  saveSettings: { id: 'saveSettings', label: 'Save settings', keys: ['mod', 'S'] },
 } as const satisfies Record<string, ShortcutDefinition>;
 
 export function isMac(): boolean {

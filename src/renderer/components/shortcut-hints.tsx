@@ -61,13 +61,32 @@ interface ShortcutHintProps {
   className?: string;
   /** Always show a muted hint (e.g. in search placeholder area). */
   alwaysVisible?: boolean;
+  /** Keep layout width stable while hints are hidden (toolbar buttons). */
+  reserveSpace?: boolean;
 }
 
-export function ShortcutHint({ keys, className, alwaysVisible = false }: ShortcutHintProps) {
+export function ShortcutHint({
+  keys,
+  className,
+  alwaysVisible = false,
+  reserveSpace = false,
+}: ShortcutHintProps) {
   const { hintsVisible } = useShortcutHints();
-  if (!hintsVisible && !alwaysVisible) return null;
-
   const parts = formatShortcutParts(keys);
+
+  if (!hintsVisible && !alwaysVisible) {
+    if (!reserveSpace) return null;
+    return (
+      <span
+        className={cn('inline-flex items-center gap-0.5 opacity-0 pointer-events-none', className)}
+        aria-hidden
+      >
+        {parts.map((part, index) => (
+          <Kbd key={`${part}-${index}`}>{part}</Kbd>
+        ))}
+      </span>
+    );
+  }
 
   return (
     <span

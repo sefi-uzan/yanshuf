@@ -35,7 +35,6 @@ export function captureToAutoResponderRule(entry: CaptureEntry, order: number): 
     order,
     match: {
       urlRegex: escapeRegex(entry.url),
-      method: entry.method,
     },
     response: {
       status: entry.status || 200,

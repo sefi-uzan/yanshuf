@@ -1,4 +1,4 @@
-import type { CaptureEntry, CaptureEntrySummary } from '../../shared/types';
+import type { CaptureEntry, CaptureEntrySummary, InterceptPhase } from '../../shared/types';
 import { bodyPreview, headersToRecord, parseUrlParts } from '../../shared/utils';
 
 export class CaptureStore {
@@ -23,6 +23,26 @@ export class CaptureStore {
     }
   }
 
+  upsert(entry: CaptureEntry): void {
+    const index = this.entries.findIndex((existing) => existing.id === entry.id);
+    if (index >= 0) {
+      this.entries[index] = entry;
+      return;
+    }
+    this.add(entry);
+  }
+
+  patch(id: string, patch: Partial<CaptureEntry>): CaptureEntry | undefined {
+    const entry = this.entries.find((existing) => existing.id === id);
+    if (!entry) return undefined;
+    if ('awaitingBreakpoint' in patch && patch.awaitingBreakpoint === undefined) {
+      delete entry.awaitingBreakpoint;
+    }
+    const { awaitingBreakpoint: _ignored, ...rest } = patch;
+    Object.assign(entry, rest);
+    return entry;
+  }
+
   list(): CaptureEntrySummary[] {
     return this.entries.map((e) => ({
       id: e.id,
@@ -39,6 +59,7 @@ export class CaptureStore {
       fromComposer: e.fromComposer,
       requestBodySize: e.requestBodySize,
       responseBodySize: e.responseBodySize,
+      awaitingBreakpoint: e.awaitingBreakpoint,
     }));
   }
 
@@ -136,4 +157,68 @@ export function extractRequestInfo(
   const parts = parseUrlParts(url, hostHeader);
   const fullUrl = url.startsWith('http') ? url : `${isSSL ? 'https' : 'http'}://${hostHeader}${url}`;
   return { host: parts.host || hostHeader, path: parts.path, fullUrl };
+}
+
+export function buildBreakpointCaptureEntry(
+  pending: PendingCapture,
+  snapshot: {
+    breakpointId: string;
+    phase: InterceptPhase;
+    ruleName: string;
+    responseStatus?: number;
+    responseHeaders?: Record<string, string>;
+    responseBody?: string;
+  },
+  maxBodySize: number,
+): CaptureEntry {
+  const requestBytes = pending.requestBody.concat();
+  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
+
+  let status = 0;
+  let responseBodySize = 0;
+  let serverHeaders: Record<string, string> = {};
+  let serverBodyRef = bodyPreview(Buffer.alloc(0), maxBodySize, 0);
+
+  if (snapshot.phase === 'response') {
+    status = snapshot.responseStatus ?? 0;
+    serverHeaders = snapshot.responseHeaders ?? {};
+    const responseBody = snapshot.responseBody ?? '';
+    responseBodySize = Buffer.byteLength(responseBody, 'utf8');
+    serverBodyRef = responseBody
+      ? bodyPreview(Buffer.from(responseBody, 'utf8'), maxBodySize, responseBodySize)
+      : bodyPreview(Buffer.alloc(0), maxBodySize, 0);
+  }
+
+  return {
+    id: pending.id,
+    startedAt: pending.startedAt,
+    durationMs: Date.now() - pending.startedAt,
+    method: pending.method,
+    url: pending.url,
+    host: pending.host,
+    path: pending.path,
+    status,
+    tls: pending.tls,
+    protocol: pending.protocol,
+    matchedRuleId: pending.matchedRuleId,
+    fromComposer: pending.fromComposer,
+    requestBodySize: pending.requestBody.total,
+    responseBodySize,
+    awaitingBreakpoint: {
+      breakpointId: snapshot.breakpointId,
+      phase: snapshot.phase,
+      ruleName: snapshot.ruleName,
+    },
+    client: {
+      method: pending.method,
+      url: pending.url,
+      headers: pending.requestHeaders,
+      body: reqBodyRef,
+    },
+    server: {
+      url: pending.url,
+      headers: serverHeaders,
+      body: serverBodyRef,
+    },
+  };
 }

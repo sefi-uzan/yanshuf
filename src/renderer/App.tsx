@@ -4,15 +4,10 @@ import type { DetailMode } from '@/features/capture/detailMode';
 import { CertOnboarding } from '@/features/certificate/CertOnboarding';
 import { GuidedTour } from '@/features/guided-tour/GuidedTour';
 import { SettingsPanel, type SettingsTab } from '@/features/settings/SettingsPanels';
-import { Button } from '@/components/ui/button';
-import { Logo } from '@/components/Logo';
-import { ShortcutHint } from '@/components/shortcut-hints';
-import { cn } from '@/lib/utils';
+import { AppHeader } from '@/components/AppHeader';
 import { withCertGate } from '@/lib/cert-gate';
 import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
-import { Settings, Zap, PenLine, Search } from 'lucide-react';
 import type { CertStatus } from '../shared/types';
-import { SHORTCUTS } from '../shared/shortcuts';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -171,7 +166,7 @@ export default function App() {
       }
       if (e.metaKey && e.key === 's' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        toggleSettings();
+        if (!settingsOpen) toggleSettings();
       }
       if (e.metaKey && e.key === 'x' && !e.shiftKey && !isEditableTarget(e.target)) {
         e.preventDefault();
@@ -180,57 +175,22 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [toggleDetailMode, toggleSettings]);
+  }, [toggleDetailMode, toggleSettings, settingsOpen]);
 
   return (
     <div className="flex h-full flex-col">
-      <header className="grid grid-cols-3 items-center gap-2 border-b px-3 py-2">
-        <Logo />
-        <div className="flex items-center justify-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(searchVisible && 'bg-accent text-accent-foreground')}
-            onClick={() => setSearchVisible((v) => !v)}
-            title={`${SHORTCUTS.search.label} (${SHORTCUTS.search.keys.join('+')})`}
-          >
-            <Search className="mr-1 h-4 w-4" />
-            Search
-            <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-2" />
-          </Button>
-          <div data-tour="rules-composer" className="flex items-center gap-1">
-            <Button
-              variant={detailMode === 'rules' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => toggleDetailMode('rules')}
-            >
-              <Zap className="mr-1 h-4 w-4" /> Rules
-              <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-2" />
-            </Button>
-            <Button
-              variant={detailMode === 'composer' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => toggleDetailMode('composer')}
-            >
-              <PenLine className="mr-1 h-4 w-4" />
-              Composer
-              <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-2" />
-            </Button>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={openSettings}>
-            <Settings className="mr-1 h-4 w-4" />
-            Settings
-            <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-2" />
-          </Button>
-        </div>
-      </header>
+      <AppHeader
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchOpen={searchVisible}
+        onSearchOpenChange={setSearchVisible}
+        detailMode={detailMode}
+        onToggleDetailMode={toggleDetailMode}
+        onOpenSettings={openSettings}
+      />
       <main className="min-h-0 flex-1">
         <CaptureView
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchVisible={searchVisible}
           detailMode={detailMode}
           composerLoadEntryId={composerLoadEntryId}
           onComposerLoadHandled={() => setComposerLoadEntryId(null)}

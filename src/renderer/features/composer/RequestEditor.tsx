@@ -6,13 +6,17 @@ import { HTTP_METHODS, methodSupportsBody, normalizeBodyForMethod } from '../../
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import {
   FloatingLabelInput,
   FloatingLabelSelect,
 } from '@/components/ui/floating-label-input';
+import { WorkspaceSectionCard } from '@/components/workspace/WorkspaceShell';
+import { methodBadgeClass } from '@/components/workspace/method-styles';
 import { copyToClipboard } from '@/lib/copy';
-import { Check, ChevronDown, ChevronRight, Copy, Plus, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Check, ChevronDown, ChevronRight, Copy, Plus, Send, X } from 'lucide-react';
 
 export function normalizeRequest(request: ComposerRequest): ComposerRequest {
   return {
@@ -39,7 +43,7 @@ export function RequestEditor({
   editorKey = 0,
   loading = false,
   onSend,
-  sendLabel = 'Send Request',
+  sendLabel = 'Send request',
   extraActions,
   name,
   onNameChange,
@@ -48,7 +52,7 @@ export function RequestEditor({
   const curlPreview = useMemo(() => exportCurl(normalizeRequest(request)), [request]);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-3 pt-2.5">
+    <div className="animate-in fade-in slide-in-from-right-2 space-y-4 duration-200">
       {onNameChange && (
         <FloatingLabelInput
           label="Name"
@@ -57,37 +61,50 @@ export function RequestEditor({
         />
       )}
 
-      <div className="flex min-w-0 items-end gap-2">
-        <FloatingLabelInput
-          wrapperClassName="min-w-0 flex-1"
-          className="font-mono"
-          label="URL"
-          value={request.url}
-          onChange={(e) => onChange({ ...request, url: e.target.value })}
-        />
-        <CopyUrlButton value={request.url} title="Copy URL" className="mb-0.5 shrink-0" />
-      </div>
-
-      <div className="flex items-end gap-2">
-        <FloatingLabelSelect
-          wrapperClassName="w-[112px] shrink-0"
-          label="Method"
-          value={request.method}
-          onChange={(e) => onChange(normalizeRequest({ ...request, method: e.target.value }))}
-        >
-          {HTTP_METHODS.map((method) => (
-            <option key={method} value={method}>{method}</option>
-          ))}
-        </FloatingLabelSelect>
-        <div className="flex-1" />
-        {extraActions}
-        <CopyCurlButton value={curlPreview} className="mb-0.5 shrink-0" />
-        {onSend && (
-          <Button className="mb-0.5 shrink-0" onClick={onSend} disabled={loading}>
-            {loading ? 'Sending…' : sendLabel}
-          </Button>
+      <WorkspaceSectionCard
+        accent="violet"
+        title="Request line"
+        description="Method, URL, and send actions."
+        actions={(
+          <div className="flex shrink-0 items-center gap-1.5">
+            {extraActions}
+            <CopyCurlButton value={curlPreview} />
+            {onSend && (
+              <Button size="sm" onClick={onSend} disabled={loading}>
+                <Send className="mr-1 h-3.5 w-3.5" />
+                {loading ? 'Sending…' : sendLabel}
+              </Button>
+            )}
+          </div>
         )}
-      </div>
+      >
+        <div className="flex flex-wrap items-end gap-2">
+          <FloatingLabelSelect
+            wrapperClassName="w-[112px] shrink-0"
+            label="Method"
+            value={request.method}
+            onChange={(e) => onChange(normalizeRequest({ ...request, method: e.target.value }))}
+          >
+            {HTTP_METHODS.map((method) => (
+              <option key={method} value={method}>{method}</option>
+            ))}
+          </FloatingLabelSelect>
+          <Badge
+            variant="outline"
+            className={cn('mb-2 h-5 shrink-0 font-mono text-[10px]', methodBadgeClass(request.method))}
+          >
+            {request.method}
+          </Badge>
+          <FloatingLabelInput
+            wrapperClassName="min-w-0 flex-1"
+            className="font-mono"
+            label="URL"
+            value={request.url}
+            onChange={(e) => onChange({ ...request, url: e.target.value })}
+          />
+          <CopyUrlButton value={request.url} title="Copy URL" className="mb-0.5 shrink-0" />
+        </div>
+      </WorkspaceSectionCard>
 
       <RequestHeadersEditor
         key={editorKey}
@@ -95,20 +112,22 @@ export function RequestEditor({
         onChange={(headers) => onChange({ ...request, headers })}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-md border">
-        <div className="flex shrink-0 items-center justify-between border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-          <span>Body</span>
-          {!bodyEnabled && (
-            <span className="font-normal text-muted-foreground/70">
-              {request.method.toUpperCase()} has no body
-            </span>
-          )}
+      <div className="overflow-hidden rounded-xl border bg-muted/20 shadow-sm">
+        <div className="flex shrink-0 items-center justify-between border-b px-3 py-2.5">
+          <div>
+            <p className="text-sm font-semibold">Body</p>
+            {!bodyEnabled && (
+              <p className="text-[11px] text-muted-foreground">
+                {request.method.toUpperCase()} requests cannot include a body
+              </p>
+            )}
+          </div>
         </div>
         <Textarea
-          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-muted/20 font-mono text-xs shadow-none focus-visible:ring-0 disabled:opacity-60"
+          className="min-h-[180px] resize-none rounded-none border-0 bg-transparent font-mono text-xs shadow-none focus-visible:ring-0 disabled:opacity-60"
           spellCheck={false}
           disabled={!bodyEnabled}
-          placeholder={bodyEnabled ? 'Request body' : `${request.method.toUpperCase()} requests cannot include a body`}
+          placeholder={bodyEnabled ? 'Request body (JSON, form data, raw text…)' : undefined}
           value={bodyEnabled ? (request.body ?? '') : ''}
           onChange={(e) => onChange({ ...request, body: e.target.value })}
         />
@@ -117,7 +136,7 @@ export function RequestEditor({
   );
 }
 
-function CopyCurlButton({ value, className }: { value: string; className?: string }) {
+function CopyCurlButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -131,7 +150,7 @@ function CopyCurlButton({ value, className }: { value: string; className?: strin
     <Button
       type="button"
       variant="outline"
-      className={className}
+      size="sm"
       title="Copy as cURL"
       disabled={!value}
       onClick={() => void handleCopy()}
@@ -188,26 +207,30 @@ function RequestHeadersEditor({
   const count = rows.filter((row) => row.key.trim()).length;
 
   return (
-    <div className="rounded-md border">
-      <div className="flex items-center">
+    <div className="overflow-hidden rounded-xl border bg-muted/20 shadow-sm">
+      <div className="flex items-center border-b">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent/50"
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2.5 text-left hover:bg-accent/30"
         >
           {open ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           )}
-          Headers
-          {count > 0 && <span className="font-normal text-muted-foreground/70">({count})</span>}
+          <span className="text-sm font-semibold">Headers</span>
+          {count > 0 && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {count}
+            </span>
+          )}
         </button>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="mr-1 h-7 shrink-0 px-2 text-xs"
+          className="mr-2 h-7 shrink-0 px-2 text-xs"
           onClick={addRow}
         >
           <Plus className="mr-1 h-3.5 w-3.5" />
@@ -215,11 +238,11 @@ function RequestHeadersEditor({
         </Button>
       </div>
       {open && (
-        <div className="border-t">
+        <div>
           {rows.length === 0 ? (
-            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No headers.{' '}
-              <button type="button" className="text-foreground underline-offset-2 hover:underline" onClick={addRow}>
+            <div className="px-3 py-5 text-center text-xs text-muted-foreground">
+              No headers yet.{' '}
+              <button type="button" className="font-medium text-foreground underline-offset-2 hover:underline" onClick={addRow}>
                 Add one
               </button>
             </div>

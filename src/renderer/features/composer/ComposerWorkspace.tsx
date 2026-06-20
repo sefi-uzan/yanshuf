@@ -21,13 +21,22 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
+import {
+  WorkspaceEmptyCards,
+  WorkspaceShell,
+} from '@/components/workspace/WorkspaceShell';
+import {
+  formatRelativeTime,
+  methodBadgeClass,
+  methodBorderClass,
+} from '@/components/workspace/method-styles';
 import { cn } from '@/lib/utils';
 import { withCertGate } from '@/lib/cert-gate';
 import { captureToComposerRequest } from './captureToComposer';
 import { composedListLabel, MAX_COMPOSED_ENTRIES } from './composerUtils';
 import { notifyDeleted, notifyRemoved } from '@/lib/toast-actions';
 import { normalizeRequest, RequestEditor } from './RequestEditor';
-import { MoreVertical, PenLine, Plus, Trash2 } from 'lucide-react';
+import { Clock, MoreVertical, PenLine, Plus, Send, Trash2 } from 'lucide-react';
 
 const emptyRequest: ComposerRequest = {
   method: 'GET',
@@ -144,108 +153,170 @@ export function ComposerWorkspace({
 
   return (
     <DropCaptureZone
-      className="h-full"
+      className="h-full min-h-0"
       hint="Drop capture to load request"
       onDropCapture={(id) => void loadFromCapture(id)}
     >
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
-          <span className="text-sm font-medium">Composer</span>
-          <div className="flex items-center gap-1.5">
+      <WorkspaceShell
+        title="Composer"
+        description="Build and send HTTP requests — results appear in the session list."
+        headerActions={(
+          <>
             {composed.length > 0 && (
               <Button
-                size="icon"
+                size="sm"
                 variant="ghost"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                title="Clear composer history"
-                aria-label="Clear composer history"
+                className="text-muted-foreground hover:text-destructive"
                 onClick={() => setClearHistoryOpen(true)}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                Clear history
               </Button>
             )}
             <Button size="sm" onClick={startNewRequest}>
               <Plus className="mr-1 h-3.5 w-3.5" />
-              New Request
+              New request
             </Button>
-          </div>
-        </div>
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[224px_minmax(0,1fr)] gap-4 p-3">
-          <div className="flex min-h-0 flex-col gap-2">
-            <ScrollArea className="min-h-0 flex-1 rounded-md border">
-              <div className="pr-1">
-                {composed.length === 0 ? (
-                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    Sent requests appear here as Composed history.
-                  </div>
-                ) : (
-                  composed.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={cn(
-                        'group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50',
-                        selectedComposedId === entry.id && 'bg-accent',
-                      )}
+          </>
+        )}
+        sidebar={(
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-2">
+              {composed.length === 0 ? (
+                <div className="px-1 py-2">
+                  <WorkspaceEmptyCards
+                    compact
+                    heading="No history yet"
+                    description="Quick-start templates:"
+                    cards={[
+                      {
+                        key: 'new',
+                        icon: <Send className="h-4 w-4 text-violet-600 dark:text-violet-400" />,
+                        title: 'Blank GET',
+                        description: 'httpbin.org/get starter.',
+                        accent: 'text-violet-600 dark:text-violet-400',
+                        border: 'hover:border-violet-500/40 hover:bg-violet-500/[0.04]',
+                        onClick: startNewRequest,
+                      },
+                      {
+                        key: 'sample-post',
+                        icon: <PenLine className="h-4 w-4 text-sky-600 dark:text-sky-400" />,
+                        title: 'Sample POST',
+                        description: 'JSON body template.',
+                        accent: 'text-sky-600 dark:text-sky-400',
+                        border: 'hover:border-sky-500/40 hover:bg-sky-500/[0.04]',
+                        onClick: () => {
+                          setSelectedComposedId(null);
+                          applyRequest({
+                            method: 'POST',
+                            url: 'https://httpbin.org/post',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: '{\n  "hello": "world"\n}',
+                          });
+                        },
+                      },
+                    ]}
+                  />
+                </div>
+              ) : (
+                composed.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={cn(
+                      'group mb-1 flex w-full items-center gap-1 rounded-md border border-transparent border-l-[3px] py-2 pl-1 pr-1 transition-colors hover:bg-accent/50',
+                      methodBorderClass(entry.request.method),
+                      selectedComposedId === entry.id && 'border-border bg-accent shadow-sm',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => loadComposed(entry)}
+                      className="flex min-w-0 flex-1 flex-col items-start px-1 text-left text-sm hover:bg-transparent"
                     >
-                      <button
-                        type="button"
-                        onClick={() => loadComposed(entry)}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm hover:bg-transparent"
-                      >
+                      <span className="flex w-full min-w-0 items-center gap-1.5">
                         <Badge
                           variant="outline"
-                          className="shrink-0 px-1 py-0 font-mono text-[10px] leading-4"
+                          className={cn(
+                            'h-4 shrink-0 px-1.5 font-mono text-[9px] font-semibold uppercase',
+                            methodBadgeClass(entry.request.method),
+                          )}
                         >
                           {entry.request.method}
                         </Badge>
-                        <PenLine className="h-3 w-3 shrink-0 text-primary" />
-                        <span className="min-w-0 flex-1 truncate">{composedListLabel(entry.request)}</span>
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {composedListLabel(entry.request)}
+                        </span>
+                      </span>
+                      <span className="mt-1 flex items-center gap-2 pl-0.5">
                         {entry.lastStatus !== undefined && (
                           <Badge
                             variant={entry.lastStatus >= 200 && entry.lastStatus < 300 ? 'success' : 'secondary'}
-                            className="shrink-0 px-1 py-0 text-[10px]"
+                            className="h-4 px-1.5 text-[9px] tabular-nums"
                           >
                             {entry.lastStatus}
                           </Badge>
                         )}
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-accent/80 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                            aria-label={`Actions for ${composedListLabel(entry.request)}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setComposedToDelete(entry.id)}
-                          >
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
+                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {formatRelativeTime(entry.sentAt)}
+                        </span>
+                      </span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+                          aria-label={`Actions for ${composedListLabel(entry.request)}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setComposedToDelete(entry.id)}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        )}
+        sidebarHeader={composed.length > 0 ? (
+          <div className="border-b px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              History
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {composed.length} sent request{composed.length === 1 ? '' : 's'}
+            </p>
           </div>
-
-          <RequestEditor
-            request={request}
-            onChange={setRequest}
-            editorKey={editorKey}
-            loading={loading}
-            onSend={send}
-          />
-        </div>
-      </div>
+        ) : undefined}
+      >
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-4">
+            {composed.length === 0 && (
+              <p className="mb-4 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                Drag a captured request from the session list to pre-fill the editor, or pick a template from history.
+              </p>
+            )}
+            <RequestEditor
+              request={request}
+              onChange={setRequest}
+              editorKey={editorKey}
+              loading={loading}
+              onSend={send}
+            />
+          </div>
+        </ScrollArea>
+      </WorkspaceShell>
 
       <Dialog open={composedToDelete !== null} onOpenChange={(open) => !open && setComposedToDelete(null)}>
         <DialogContent>
