@@ -3,7 +3,7 @@ import type { CaptureFilterMode } from '../../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { clearCapturedRequests, notifyActionFailed, notifyApplied } from '@/lib/toast-actions';
+import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
 
 interface UserSettingsProps {
   active?: boolean;
@@ -53,7 +53,6 @@ export function UserSettings({ active, onReplayTour, onApplied }: UserSettingsPr
         },
       });
       await clearCapturedRequests({ toast: false });
-      notifyApplied('Filters', 'Captured requests cleared');
       onApplied?.();
     } catch (error) {
       notifyActionFailed('apply filters', error);
