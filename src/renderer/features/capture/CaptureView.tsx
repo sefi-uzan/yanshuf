@@ -89,6 +89,10 @@ export function CaptureView({
         setStatus(next);
         return;
       }
+      if (!status?.systemProxyEnabled) {
+        notifyActionFailed('start capture', new Error('Enable System Proxy first'));
+        return;
+      }
       const next = await withCertGate(
         () => window.yanshuf.proxy.start(),
         () => onOpenCertificateSettings?.(),
@@ -233,6 +237,12 @@ function StatusBar({
           active={status?.running ?? false}
           onToggle={onToggleProxy}
           shortcutKeys={SHORTCUTS.toggleCapture.keys}
+          disabled={!status?.running && !status?.systemProxyEnabled}
+          title={
+            !status?.systemProxyEnabled && !status?.running
+              ? 'Enable System Proxy first'
+              : undefined
+          }
         />
         <StatusToggle
           label="System Proxy"
@@ -282,19 +292,27 @@ function StatusToggle({
   active,
   onToggle,
   shortcutKeys,
+  disabled,
+  title,
 }: {
   label: string;
   active: boolean;
   onToggle: () => void;
   shortcutKeys?: ShortcutKey[];
+  disabled?: boolean;
+  title?: string;
 }) {
   const id = useId();
 
   return (
     <label
       htmlFor={id}
+      title={title}
       className={cn(
-        'inline-flex h-7 cursor-pointer select-none items-center gap-2 rounded-md border border-input bg-background px-2 shadow-sm transition-colors hover:bg-accent/50',
+        'inline-flex h-7 select-none items-center gap-2 rounded-md border border-input bg-background px-2 shadow-sm transition-colors',
+        disabled
+          ? 'cursor-not-allowed opacity-50'
+          : 'cursor-pointer hover:bg-accent/50',
         active && 'border-emerald-500/35 bg-emerald-500/[0.06]',
       )}
     >
@@ -310,6 +328,7 @@ function StatusToggle({
       <Switch
         id={id}
         checked={active}
+        disabled={disabled}
         onCheckedChange={onToggle}
         className={cn('scale-90', active && 'data-[state=checked]:bg-emerald-600')}
       />
