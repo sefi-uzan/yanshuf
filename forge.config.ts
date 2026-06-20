@@ -1,10 +1,11 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerDMG } from '@electron-forge/maker-dmg';
-import { MakerZIP } from '@electron-forge/maker-zip';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
+import { copyMainExternals } from './scripts/copy-main-externals';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -15,9 +16,13 @@ const config: ForgeConfig = {
     extraResource: [path.resolve(__dirname, 'assets')],
   },
   rebuildConfig: {},
+  hooks: {
+    async packageAfterCopy(_forgeConfig, buildPath) {
+      copyMainExternals(buildPath, __dirname);
+    },
+  },
   makers: [
     new MakerDMG({}, ['darwin']),
-    new MakerZIP({}, ['darwin']),
   ],
   plugins: [
     new VitePlugin({
@@ -42,6 +47,7 @@ const config: ForgeConfig = {
         },
       ],
     }),
+    new AutoUnpackNativesPlugin({}),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
     new FusesPlugin({

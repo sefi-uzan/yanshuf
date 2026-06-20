@@ -1,7 +1,6 @@
 import { PenLine, Settings, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExpandableSearch } from '@/components/ExpandableSearch';
-import { Logo } from '@/components/Logo';
 import { ShortcutHint } from '@/components/shortcut-hints';
 import { cn } from '@/lib/utils';
 import type { DetailMode } from '@/features/capture/detailMode';
@@ -31,9 +30,7 @@ export function AppHeader({
   onOpenSettings,
 }: AppHeaderProps) {
   return (
-    <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b px-4 py-2">
-      <Logo className="justify-self-start" />
-
+    <header className="flex items-center justify-center border-b px-4 py-2">
       <div
         data-tour="rules-composer"
         className={cn(
@@ -71,13 +68,13 @@ export function AppHeader({
           Composer
           <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-1.5" reserveSpace />
         </Button>
-      </div>
 
-      <div className="justify-self-end">
-        <Button variant="ghost" size="sm" className="h-8" onClick={onOpenSettings}>
-          <Settings className="mr-1 h-4 w-4" />
+        <ToolbarDivider />
+
+        <Button variant="ghost" size="sm" className="h-7 rounded-[7px] px-2.5" onClick={onOpenSettings}>
+          <Settings className="mr-1 h-3.5 w-3.5" />
           Settings
-          <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-2" reserveSpace />
+          <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-1.5" reserveSpace />
         </Button>
       </div>
     </header>
