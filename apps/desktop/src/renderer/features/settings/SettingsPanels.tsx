@@ -4,14 +4,16 @@ import { DEFAULT_SETTINGS , SHORTCUTS, formatShortcutParts } from '@yanshuf/shar
 import { Button , Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle , Input , Separator , Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
 import { Kbd, useShortcutHints } from '@/components/shortcut-hints';
 import { cn } from '@yanshuf/ui/lib/utils';
-import { Loader2, Plug, Shield, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Bot, Shield, SlidersHorizontal } from 'lucide-react';
 import { CaptureFilterFields } from './CaptureFilterFields';
 import { CertificateSettings } from './CertificateSettings';
-import { McpIntegrationPanel } from './McpIntegrationPanel';
+import { AiIntegrationSettings } from './AiIntegrationSettings';
+import { IntegrationOnboarding } from '../integration/IntegrationOnboarding';
 import { SettingsFooter, SettingsSection } from './SettingsLayout';
 import { clearCapturedRequests, notifyActionFailed, notifySaved } from '@/lib/toast-actions';
+import type { IntegrationClient } from '@yanshuf/shared';
 
-export type SettingsTab = 'general' | 'certificate' | 'integrations';
+export type SettingsTab = 'general' | 'certificate' | 'ai';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -20,6 +22,9 @@ interface SettingsPanelProps {
   onCertStatusChange?: (status: CertStatus) => void;
   onOpenCertOnboarding?: () => void;
   certStatus?: CertStatus | null;
+  focusAiUpdates?: boolean;
+  integrationStatusNonce?: number;
+  onIntegrationStatusChange?: () => void;
 }
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -39,7 +44,7 @@ const NAV_ITEMS: {
 }[] = [
   { value: 'general', label: 'General', icon: SlidersHorizontal },
   { value: 'certificate', label: 'Certificate', icon: Shield },
-  { value: 'integrations', label: 'Integrations', icon: Plug },
+  { value: 'ai', label: 'AI', icon: Bot },
 ];
 
 export function SettingsPanel({
@@ -49,6 +54,9 @@ export function SettingsPanel({
   onCertStatusChange,
   onOpenCertOnboarding,
   certStatus,
+  focusAiUpdates = false,
+  integrationStatusNonce = 0,
+  onIntegrationStatusChange,
 }: SettingsPanelProps) {
   const [port, setPort] = useState(DEFAULT_SETTINGS.port);
   const [ringBufferSize, setRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
@@ -62,7 +70,7 @@ export function SettingsPanel({
   const [initialFilterUrls, setInitialFilterUrls] = useState('');
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
   const [saving, setSaving] = useState(false);
-  const [integrationClient, setIntegrationClient] = useState<'cursor' | 'claude-code' | null>(null);
+  const [integrationClient, setIntegrationClient] = useState<IntegrationClient | null>(null);
   const { hintsVisible } = useShortcutHints();
 
   useEffect(() => {
@@ -296,32 +304,32 @@ export function SettingsPanel({
                 />
               </TabsContent>
 
-              <TabsContent value="integrations" className="mt-0 space-y-4 focus-visible:outline-none">
-                <p className="text-sm text-muted-foreground">
-                  Connect Yanshuf to AI coding tools via MCP. Installs server config, the /yanshuf skill, and a
-                  sessionEnd cleanup hook.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => setIntegrationClient('cursor')}>
-                    Add to Cursor
-                  </Button>
-                  <Button variant="outline" onClick={() => setIntegrationClient('claude-code')}>
-                    Add to Claude Code
-                  </Button>
-                </div>
+              <TabsContent value="ai" className="mt-0 focus-visible:outline-none">
+                <AiIntegrationSettings
+                  active={open && tab === 'ai'}
+                  focusUpdates={focusAiUpdates && tab === 'ai'}
+                  integrationStatusNonce={integrationStatusNonce}
+                  onOpenOnboarding={setIntegrationClient}
+                  onOpenCertificate={onOpenCertOnboarding}
+                  onStatusChange={onIntegrationStatusChange}
+                />
               </TabsContent>
             </div>
           </div>
         </Tabs>
 
         {integrationClient && (
-          <McpIntegrationPanel
+          <IntegrationOnboarding
             open={Boolean(integrationClient)}
             onOpenChange={(next) => {
-              if (!next) setIntegrationClient(null);
+              if (!next) {
+                setIntegrationClient(null);
+                onIntegrationStatusChange?.();
+              }
             }}
             client={integrationClient}
-            certTrusted={certStatus?.trusted === 'installed'}
+            onOpenCertificate={onOpenCertOnboarding}
+            onComplete={onIntegrationStatusChange}
           />
         )}
       </DialogContent>

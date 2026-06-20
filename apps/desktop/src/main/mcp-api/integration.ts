@@ -1,29 +1,26 @@
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { app } from 'electron';
+import type {
+  IntegrationClient,
+  IntegrationManifest,
+  IntegrationStepResult,
+  IntegrationVerifyParams,
+  IntegrationVerifyResult,
+  SkillInstallTarget,
+} from '@yanshuf/shared';
 import { getMcpDataDir } from './auth';
+import { checkNodeOnPath } from './integration-prerequisites';
 
-export type IntegrationClient = 'cursor' | 'claude-code';
+export type { IntegrationClient, IntegrationStepResult, IntegrationVerifyResult, SkillInstallTarget };
 
-export type SkillInstallTarget =
-  | { kind: 'personal' }
-  | { kind: 'project'; repoRoot: string };
-
-export interface IntegrationStepResult {
-  ok: boolean;
-  message: string;
-  path?: string;
-}
-
-export interface IntegrationVerifyResult {
-  mcpConfigured: boolean;
-  skillInstalled: boolean;
-  hookInstalled: boolean;
-  apiReachable: boolean;
-  certTrusted: boolean;
-  details: string[];
-}
+const DEFAULT_MANIFEST: IntegrationManifest = {
+  bundleVersion: '0.0.0',
+  skillContentHash: '',
+  generatedAt: '',
+};
 
 function homePath(...segments: string[]): string {
   return path.join(os.homedir(), ...segments);
@@ -33,6 +30,7 @@ export function bundledMcpPaths(): {
   mcpEntry: string;
   skillsSource: string;
   cleanupSessionScript: string;
+  manifestPath: string;
 } {
   if (app.isPackaged) {
     const root = path.join(process.resourcesPath, 'mcp');
@@ -40,6 +38,7 @@ export function bundledMcpPaths(): {
       mcpEntry: path.join(root, 'index.js'),
       skillsSource: path.join(root, 'skills', 'yanshuf'),
       cleanupSessionScript: path.join(root, 'scripts', 'cleanup-session.sh'),
+      manifestPath: path.join(root, 'integration-manifest.json'),
     };
   }
 
@@ -48,10 +47,144 @@ export function bundledMcpPaths(): {
     mcpEntry: path.join(monorepoRoot, 'apps', 'mcp', 'dist', 'index.js'),
     skillsSource: path.join(monorepoRoot, 'apps', 'mcp', 'skills', 'yanshuf'),
     cleanupSessionScript: path.join(monorepoRoot, 'apps', 'mcp', 'scripts', 'cleanup-session.sh'),
+    manifestPath: path.join(monorepoRoot, 'apps', 'mcp', 'integration-manifest.json'),
   };
 }
 
-function skillDestination(client: IntegrationClient, target: SkillInstallTarget): string {
+export function bundledIntegrationManifest(): IntegrationManifest {
+  const { manifestPath } = bundledMcpPaths();
+  try {
+    return JSON.parse(readFileSync(manifestPath, 'utf8')) as IntegrationManifest;
+  } catch {
+    return DEFAULT_MANIFEST;
+  }
+}
+
+export function getClientConfigPaths(client: IntegrationClient): {
+  mcpConfig: string;
+  hookConfig: string;
+  mcpEntry: string;
+  cleanupSessionScript: string;
+} {
+  const { mcpEntry, cleanupSessionScript } = bundledMcpPaths();
+  if (client === 'cursor') {
+    return {
+      mcpConfig: homePath('.cursor', 'mcp.json'),
+      hookConfig: homePath('.cursor', 'hooks.json'),
+      mcpEntry,
+      cleanupSessionScript,
+    };
+  }
+  return {
+    mcpConfig: homePath('.claude', 'settings.json'),
+    hookConfig: homePath('.claude', 'settings.json'),
+    mcpEntry,
+    cleanupSessionScript,
+  };
+}
+
+export async function detectMcpConfigured(client: IntegrationClient): Promise<boolean> {
+  if (client === 'cursor') {
+    const config = await readJsonFile<{ mcpServers?: Record<string, { args?: string[] }> }>(
+      homePath('.cursor', 'mcp.json'),
+    );
+    return Boolean(config?.mcpServers?.yanshuf?.args?.some((arg) => arg.includes('index.js')));
+  }
+  const config = await readJsonFile<{ mcpServers?: Record<string, { args?: string[] }> }>(
+    homePath('.claude', 'settings.json'),
+  );
+  return Boolean(config?.mcpServers?.yanshuf?.args?.some((arg) => arg.includes('index.js')));
+}
+
+export async function detectHookConfigured(client: IntegrationClient): Promise<boolean> {
+  if (client === 'cursor') {
+    const hooks = await readJsonFile<{ hooks?: { sessionEnd?: { command?: string }[] } }>(
+      homePath('.cursor', 'hooks.json'),
+    );
+    return Boolean(hooks?.hooks?.sessionEnd?.some((h) => isYanshufHook(h.command)));
+  }
+  const hooks = await readJsonFile<{ hooks?: { SessionEnd?: { command?: string }[] } }>(
+    homePath('.claude', 'settings.json'),
+  );
+  return Boolean(hooks?.hooks?.SessionEnd?.some((h) => isYanshufHook(h.command)));
+}
+
+export async function detectSkillConfigured(skillPath: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(skillPath, 'SKILL.md'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeDirRecursive(dir: string): Promise<void> {
+  await fs.rm(dir, { recursive: true, force: true });
+}
+
+export async function uninstallMcpEntry(client: IntegrationClient): Promise<IntegrationStepResult> {
+  if (client === 'cursor') {
+    const configPath = homePath('.cursor', 'mcp.json');
+    const existing = await readJsonFile<{ mcpServers?: Record<string, unknown> }>(configPath);
+    if (!existing?.mcpServers?.yanshuf) {
+      return { ok: true, message: 'MCP entry not present in Cursor config.' };
+    }
+    const { yanshuf: _, ...rest } = existing.mcpServers;
+    existing.mcpServers = rest;
+    await writeJsonFile(configPath, existing);
+    return { ok: true, message: 'Removed yanshuf MCP server from Cursor.', path: configPath };
+  }
+
+  const configPath = homePath('.claude', 'settings.json');
+  const existing = await readJsonFile<{ mcpServers?: Record<string, unknown> }>(configPath);
+  if (!existing?.mcpServers?.yanshuf) {
+    return { ok: true, message: 'MCP entry not present in Claude Code config.' };
+  }
+  const { yanshuf: _, ...rest } = existing.mcpServers;
+  existing.mcpServers = rest;
+  await writeJsonFile(configPath, existing);
+  return { ok: true, message: 'Removed yanshuf MCP server from Claude Code.', path: configPath };
+}
+
+export async function uninstallSessionEndHook(client: IntegrationClient): Promise<IntegrationStepResult> {
+  if (client === 'cursor') {
+    const configPath = homePath('.cursor', 'hooks.json');
+    const existing = await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath);
+    if (!existing?.hooks?.sessionEnd) {
+      return { ok: true, message: 'SessionEnd hook not present in Cursor config.' };
+    }
+    const sessionEnd = (existing.hooks.sessionEnd ?? []).filter(
+      (h) => !(typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command))),
+    );
+    existing.hooks.sessionEnd = sessionEnd;
+    await writeJsonFile(configPath, existing);
+    return { ok: true, message: 'Removed sessionEnd hook from Cursor.', path: configPath };
+  }
+
+  const configPath = homePath('.claude', 'settings.json');
+  const existing = await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath);
+  if (!existing?.hooks?.SessionEnd) {
+    return { ok: true, message: 'SessionEnd hook not present in Claude Code config.' };
+  }
+  const sessionEnd = (existing.hooks.SessionEnd ?? []).filter(
+    (h) => !(typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command))),
+  );
+  existing.hooks.SessionEnd = sessionEnd;
+  await writeJsonFile(configPath, existing);
+  return { ok: true, message: 'Removed SessionEnd hook from Claude Code.', path: configPath };
+}
+
+export async function uninstallSkillPath(skillPath: string): Promise<IntegrationStepResult> {
+  try {
+    await removeDirRecursive(skillPath);
+    return { ok: true, message: `Removed skill at ${skillPath}`, path: skillPath };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: `Failed to remove skill at ${skillPath}: ${message}` };
+  }
+}
+
+export function skillDestination(client: IntegrationClient, target: SkillInstallTarget): string {
   if (target.kind === 'personal') {
     return client === 'cursor'
       ? homePath('.cursor', 'skills', 'yanshuf')
@@ -119,6 +252,13 @@ export async function installMcpEntry(client: IntegrationClient): Promise<Integr
   return { ok: true, message: 'Added yanshuf MCP server to Claude Code.', path: configPath };
 }
 
+export async function updateMcpEntryPath(
+  client: IntegrationClient,
+  mcpEntry: string,
+): Promise<IntegrationStepResult> {
+  return installMcpEntry(client);
+}
+
 export async function installSkill(
   client: IntegrationClient,
   target: SkillInstallTarget,
@@ -135,6 +275,10 @@ export async function installSkill(
   return { ok: true, message: `Installed /yanshuf skill to ${dest}`, path: dest };
 }
 
+function isYanshufHook(command: string | undefined): boolean {
+  return Boolean(command?.includes('cleanup-session'));
+}
+
 export async function installSessionEndHook(client: IntegrationClient): Promise<IntegrationStepResult> {
   const { cleanupSessionScript } = bundledMcpPaths();
   try {
@@ -148,11 +292,14 @@ export async function installSessionEndHook(client: IntegrationClient): Promise<
     const existing = (await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath)) ?? {};
     const hooks = existing.hooks ?? {};
     const sessionEnd = Array.isArray(hooks.sessionEnd) ? [...hooks.sessionEnd] : [];
-    const already = sessionEnd.some(
-      (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('cleanup-session'),
+    const idx = sessionEnd.findIndex(
+      (h) => typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command)),
     );
-    if (!already) {
-      sessionEnd.push({ command: cleanupSessionScript });
+    const entry = { command: cleanupSessionScript };
+    if (idx >= 0) {
+      sessionEnd[idx] = entry;
+    } else {
+      sessionEnd.push(entry);
     }
     hooks.sessionEnd = sessionEnd;
     existing.hooks = hooks;
@@ -165,16 +312,26 @@ export async function installSessionEndHook(client: IntegrationClient): Promise<
     (await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath)) ?? {};
   const hooks = existing.hooks ?? {};
   const sessionEnd = Array.isArray(hooks.SessionEnd) ? [...hooks.SessionEnd] : [];
-  const already = sessionEnd.some(
-    (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('cleanup-session'),
+  const idx = sessionEnd.findIndex(
+    (h) => typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command)),
   );
-  if (!already) {
-    sessionEnd.push({ command: cleanupSessionScript });
+  const entry = { command: cleanupSessionScript };
+  if (idx >= 0) {
+    sessionEnd[idx] = entry;
+  } else {
+    sessionEnd.push(entry);
   }
   hooks.SessionEnd = sessionEnd;
   existing.hooks = hooks;
   await writeJsonFile(configPath, existing);
   return { ok: true, message: 'Added SessionEnd hook to Claude Code.', path: configPath };
+}
+
+export async function updateHookPath(
+  client: IntegrationClient,
+  cleanupSessionScript: string,
+): Promise<IntegrationStepResult> {
+  return installSessionEndHook(client);
 }
 
 export async function installIntegration(
@@ -189,12 +346,13 @@ export async function installIntegration(
 
 export async function verifyIntegration(
   client: IntegrationClient,
-  target: SkillInstallTarget,
+  params: IntegrationVerifyParams,
   apiReachable: boolean,
   certTrusted: boolean,
 ): Promise<IntegrationVerifyResult> {
-  const { mcpEntry, cleanupSessionScript } = bundledMcpPaths();
+  const { cleanupSessionScript } = bundledMcpPaths();
   const details: string[] = [];
+  const nodeCheck = await checkNodeOnPath();
 
   let mcpConfigured = false;
   if (client === 'cursor') {
@@ -214,14 +372,32 @@ export async function verifyIntegration(
   }
   if (!mcpConfigured) details.push('MCP entry not configured or path mismatch.');
 
-  const skillPath = path.join(skillDestination(client, target), 'SKILL.md');
-  let skillInstalled = false;
-  try {
-    await fs.access(skillPath);
-    skillInstalled = true;
-  } catch {
-    details.push(`Skill not found at ${skillPath}`);
+  const skillChecks: boolean[] = [];
+  if (params.personalSkill) {
+    const skillPath = path.join(skillDestination(client, { kind: 'personal' }), 'SKILL.md');
+    try {
+      await fs.access(skillPath);
+      skillChecks.push(true);
+    } catch {
+      skillChecks.push(false);
+      details.push(`Personal skill not found at ${skillPath}`);
+    }
   }
+  for (const repoRoot of params.projectRoots) {
+    const skillPath = path.join(
+      skillDestination(client, { kind: 'project', repoRoot }),
+      'SKILL.md',
+    );
+    try {
+      await fs.access(skillPath);
+      skillChecks.push(true);
+    } catch {
+      skillChecks.push(false);
+      details.push(`Project skill not found at ${skillPath}`);
+    }
+  }
+  const skillInstalled =
+    skillChecks.length === 0 ? true : skillChecks.every(Boolean);
 
   let hookInstalled = false;
   if (client === 'cursor') {
@@ -229,14 +405,14 @@ export async function verifyIntegration(
       homePath('.cursor', 'hooks.json'),
     );
     hookInstalled = Boolean(
-      hooks?.hooks?.sessionEnd?.some((h) => h.command?.includes('cleanup-session')),
+      hooks?.hooks?.sessionEnd?.some((h) => isYanshufHook(h.command)),
     );
   } else {
     const hooks = await readJsonFile<{ hooks?: { SessionEnd?: { command?: string }[] } }>(
       homePath('.claude', 'settings.json'),
     );
     hookInstalled = Boolean(
-      hooks?.hooks?.SessionEnd?.some((h) => h.command?.includes('cleanup-session')),
+      hooks?.hooks?.SessionEnd?.some((h) => isYanshufHook(h.command)),
     );
   }
   if (!hookInstalled) details.push('SessionEnd hook not configured.');
@@ -247,6 +423,9 @@ export async function verifyIntegration(
     details.push(`Cleanup session script missing at ${cleanupSessionScript}`);
   }
 
+  if (!nodeCheck.ok) {
+    details.push(nodeCheck.message ?? 'Node.js not available on PATH.');
+  }
   if (!apiReachable) details.push('Yanshuf MCP HTTP API is not reachable.');
   if (!certTrusted) details.push('Certificate is not trusted — complete setup in Yanshuf settings.');
 
@@ -256,6 +435,8 @@ export async function verifyIntegration(
     hookInstalled,
     apiReachable,
     certTrusted,
+    nodeOk: nodeCheck.ok,
+    nodeVersion: nodeCheck.version,
     details,
   };
 }

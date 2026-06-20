@@ -24,6 +24,10 @@ export function copyMcpBundle(buildPath: string, desktopRoot: string): void {
 
   copyRecursive(path.join(mcpRoot, 'skills'), path.join(dest, 'skills'));
   copyRecursive(path.join(mcpRoot, 'scripts'), path.join(dest, 'scripts'));
+  const manifestSrc = path.join(mcpRoot, 'integration-manifest.json');
+  if (fs.existsSync(manifestSrc)) {
+    fs.copyFileSync(manifestSrc, path.join(dest, 'integration-manifest.json'));
+  }
 }
 
 function copyRecursive(src: string, dest: string): void {

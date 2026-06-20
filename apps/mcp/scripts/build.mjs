@@ -1,5 +1,11 @@
 import * as esbuild from 'esbuild';
 import { chmodSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+spawnSync(process.execPath, [path.join(__dirname, 'generate-manifest.mjs')], { stdio: 'inherit' });
 
 await esbuild.build({
   entryPoints: ['src/index.ts'],

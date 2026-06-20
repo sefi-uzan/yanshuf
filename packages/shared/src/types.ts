@@ -212,6 +212,14 @@ export const IPC_CHANNELS = {
   MCP_INTEGRATION_INSTALL: 'mcp:integration-install',
   MCP_INTEGRATION_VERIFY: 'mcp:integration-verify',
   MCP_INTEGRATION_INSTALL_STEP: 'mcp:integration-install-step',
+  MCP_INTEGRATION_PREREQUISITES: 'mcp:integration-prerequisites',
+  MCP_INTEGRATION_STATUS: 'mcp:integration-status',
+  MCP_INTEGRATION_REGISTRY_GET: 'mcp:integration-registry-get',
+  MCP_INTEGRATION_UPDATE: 'mcp:integration-update',
+  MCP_INTEGRATION_RECORD: 'mcp:integration-record',
+  MCP_INTEGRATION_REMOVE: 'mcp:integration-remove',
+  MCP_INTEGRATION_UNINSTALL: 'mcp:integration-uninstall',
+  MCP_INTEGRATION_DISMISS_PROMPT: 'mcp:integration-dismiss-prompt',
   DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
 } as const;
 

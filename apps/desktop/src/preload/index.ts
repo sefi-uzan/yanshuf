@@ -11,8 +11,17 @@ import type {
   ComposerResponse,
   InterceptModifications,
   InterceptRule,
+  IntegrationClient,
+  IntegrationPrerequisites,
+  IntegrationRegistry,
+  IntegrationStatusResult,
+  IntegrationUninstallPayload,
+  IntegrationUninstallResult,
+  IntegrationVerifyParams,
+  IntegrationVerifyResult,
   MenuAction,
   ProxyStatus,
+  SkillInstallTarget,
 } from '@yanshuf/shared';
 import { IPC_CHANNELS } from '@yanshuf/shared';
 
@@ -69,8 +78,8 @@ export interface YanshufAPI {
   };
   integration: {
     install: (
-      client: 'cursor' | 'claude-code',
-      target: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
+      client: IntegrationClient,
+      target: SkillInstallTarget,
     ) => Promise<{
       mcp: { ok: boolean; message: string; path?: string };
       skill: { ok: boolean; message: string; path?: string };
@@ -78,20 +87,28 @@ export interface YanshufAPI {
     }>;
     installStep: (
       step: 'mcp' | 'skill' | 'hook',
-      client: 'cursor' | 'claude-code',
-      target?: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
+      client: IntegrationClient,
+      target?: SkillInstallTarget,
     ) => Promise<{ ok: boolean; message: string; path?: string }>;
     verify: (
-      client: 'cursor' | 'claude-code',
-      target: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
-    ) => Promise<{
-      mcpConfigured: boolean;
-      skillInstalled: boolean;
-      hookInstalled: boolean;
-      apiReachable: boolean;
-      certTrusted: boolean;
-      details: string[];
+      client: IntegrationClient,
+      params: IntegrationVerifyParams,
+    ) => Promise<IntegrationVerifyResult>;
+    prerequisites: () => Promise<IntegrationPrerequisites>;
+    status: () => Promise<IntegrationStatusResult>;
+    getRegistry: () => Promise<IntegrationRegistry>;
+    record: (
+      client: IntegrationClient,
+      targets: SkillInstallTarget[],
+      verifyOk: boolean,
+    ) => Promise<unknown>;
+    update: (payload?: { recordIds?: string[]; client?: IntegrationClient }) => Promise<{
+      ok: boolean;
+      results: { id: string; ok: boolean; message: string }[];
     }>;
+    uninstall: (payload: IntegrationUninstallPayload) => Promise<IntegrationUninstallResult>;
+    remove: (recordId: string) => Promise<void>;
+    dismissPostCertPrompt: () => Promise<void>;
   };
   menu: {
     onAction: (callback: (action: MenuAction) => void) => () => void;
@@ -162,7 +179,16 @@ const api: YanshufAPI = {
     install: (client, target) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_INSTALL, client, target),
     installStep: (step, client, target) =>
       ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_INSTALL_STEP, step, client, target),
-    verify: (client, target) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_VERIFY, client, target),
+    verify: (client, params) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_VERIFY, client, params),
+    prerequisites: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_PREREQUISITES),
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_STATUS),
+    getRegistry: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_REGISTRY_GET),
+    record: (client, targets, verifyOk) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_RECORD, client, targets, verifyOk),
+    update: (payload) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_UPDATE, payload),
+    uninstall: (payload) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_UNINSTALL, payload),
+    remove: (recordId) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_REMOVE, recordId),
+    dismissPostCertPrompt: () => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_DISMISS_PROMPT),
   },
   menu: {
     onAction: (callback) => {

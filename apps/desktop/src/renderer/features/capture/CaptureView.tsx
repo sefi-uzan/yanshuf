@@ -1,12 +1,12 @@
 import { useEffect, useId, useState } from 'react';
-import type { CaptureEntry, CaptureEntrySummary, CertStatus, ProxyStatus, ShortcutKey } from '@yanshuf/shared';
+import type { CaptureEntry, CaptureEntrySummary, CertStatus, IntegrationAggregateStatus, ProxyStatus, ShortcutKey } from '@yanshuf/shared';
 import { SHORTCUTS } from '@yanshuf/shared';
 import { Button, Switch } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Shield } from 'lucide-react';
+import { Shield, Bot } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import type { DetailMode } from './detailMode';
@@ -29,6 +29,8 @@ interface CaptureViewProps {
   onCaptureEntrySelect?: () => void;
   certStatus?: CertStatus | null;
   onOpenCertificateSettings?: () => void;
+  integrationStatus?: IntegrationAggregateStatus;
+  onOpenAiSettings?: () => void;
   proxyStatusNonce?: number;
 }
 
@@ -44,6 +46,8 @@ export function CaptureView({
   onCaptureEntrySelect,
   certStatus,
   onOpenCertificateSettings,
+  integrationStatus = 'not_installed',
+  onOpenAiSettings,
   proxyStatusNonce = 0,
 }: CaptureViewProps) {
   const [entries, setEntries] = useState<CaptureEntrySummary[]>([]);
@@ -183,10 +187,12 @@ export function CaptureView({
         status={status}
         entryCount={entries.length}
         certStatus={certStatus}
+        integrationStatus={integrationStatus}
         onToggleProxy={toggleProxy}
         onToggleSystemProxy={toggleSystemProxy}
         onClear={clearSession}
         onOpenCertificateSettings={onOpenCertificateSettings}
+        onOpenAiSettings={onOpenAiSettings}
       />
     </div>
   );
@@ -196,18 +202,22 @@ function StatusBar({
   status,
   entryCount,
   certStatus,
+  integrationStatus,
   onToggleProxy,
   onToggleSystemProxy,
   onClear,
   onOpenCertificateSettings,
+  onOpenAiSettings,
 }: {
   status: ProxyStatus | null;
   entryCount: number;
   certStatus?: CertStatus | null;
+  integrationStatus: IntegrationAggregateStatus;
   onToggleProxy: () => void;
   onToggleSystemProxy: () => void;
   onClear: () => void;
   onOpenCertificateSettings?: () => void;
+  onOpenAiSettings?: () => void;
 }) {
   const certLabel =
     certStatus?.trusted === 'installed'
@@ -266,6 +276,39 @@ function StatusBar({
           )}
         />
         {certLabel}
+      </button>
+      <button
+        type="button"
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
+          integrationStatus === 'installed' &&
+            'border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-400',
+          integrationStatus === 'update_available' &&
+            'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+          integrationStatus === 'not_installed' &&
+            'border-border bg-background/60 text-muted-foreground',
+        )}
+        onClick={() => onOpenAiSettings?.()}
+        title={
+          integrationStatus === 'installed'
+            ? 'AI integration connected'
+            : integrationStatus === 'update_available'
+              ? 'AI integration update available'
+              : 'Set up AI integration'
+        }
+      >
+        <Bot
+          className={cn(
+            'h-3.5 w-3.5',
+            integrationStatus === 'installed' && 'text-teal-600 dark:text-teal-400',
+            integrationStatus === 'update_available' && 'text-amber-600 dark:text-amber-400',
+          )}
+        />
+        {integrationStatus === 'installed'
+          ? 'AI connected'
+          : integrationStatus === 'update_available'
+            ? 'AI update'
+            : 'AI'}
       </button>
       <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
       <span className="text-muted-foreground">Entries: {entryCount}</span>
