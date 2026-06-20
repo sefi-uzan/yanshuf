@@ -184,9 +184,9 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-2 border-b px-3 py-2">
+      <header className="grid grid-cols-3 items-center gap-2 border-b px-3 py-2">
         <Logo />
-        <div className="ml-auto flex items-center gap-1">
+        <div className="flex items-center justify-center gap-1">
           <Button
             variant="ghost"
             size="sm"
@@ -217,6 +217,8 @@ export default function App() {
               <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-2" />
             </Button>
           </div>
+        </div>
+        <div className="flex items-center justify-end gap-1">
           <Button variant="ghost" size="sm" onClick={openSettings}>
             <Settings className="mr-1 h-4 w-4" />
             Settings
