@@ -8,10 +8,12 @@ import { GuidedTour } from '@/features/guided-tour/GuidedTour';
 import { SettingsPanel, type SettingsTab } from '@/features/settings/SettingsPanels';
 import { AppHeader } from '@/components/AppHeader';
 import { withCertGate } from '@/lib/cert-gate';
+import { useAppNotify } from '@/lib/use-app-notify';
 import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
 import type { CertStatus, IntegrationAggregateStatus, IntegrationClient } from '@yanshuf/shared';
 
 export default function App() {
+  useAppNotify();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchVisible, setSearchVisible] = useState(false);
   const [detailMode, setDetailMode] = useState<DetailMode>('capture');

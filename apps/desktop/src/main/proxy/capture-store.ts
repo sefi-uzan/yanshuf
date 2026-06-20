@@ -108,6 +108,47 @@ export interface PendingCapture {
   fromComposer?: boolean;
 }
 
+export function buildFailedCaptureEntry(
+  pending: PendingCapture,
+  status: number,
+  errorMessage: string,
+  maxBodySize: number,
+): CaptureEntry {
+  const requestBytes = pending.requestBody.concat();
+  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
+  const durationMs = Date.now() - pending.startedAt;
+
+  return {
+    id: pending.id,
+    startedAt: pending.startedAt,
+    durationMs,
+    method: pending.method,
+    url: pending.url,
+    host: pending.host,
+    path: pending.path,
+    status,
+    tls: pending.tls,
+    protocol: pending.protocol,
+    matchedRuleId: pending.matchedRuleId,
+    matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
+    mappedToUrl: pending.mappedToUrl,
+    fromComposer: pending.fromComposer,
+    requestBodySize: pending.requestBody.total,
+    responseBodySize: 0,
+    client: {
+      method: pending.method,
+      url: pending.url,
+      headers: pending.requestHeaders,
+      body: reqBodyRef,
+    },
+    server: {
+      url: pending.mappedToUrl ?? pending.url,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      body: { size: 0, preview: errorMessage },
+    },
+  };
+}
+
 export function buildCaptureEntry(
   pending: PendingCapture,
   status: number,

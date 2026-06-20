@@ -16,6 +16,7 @@ import { AutoResponderEngine } from './auto-responder/engine';
 import { BreakpointManager } from './intercept/breakpoint-manager';
 import { InterceptEngine } from './intercept/engine';
 import { MapRemoteEngine } from './map-remote/engine';
+import { bindNotifyWindow, notifyRenderer } from './notify-renderer';
 import { CertificateManager } from './cert/manager';
 import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
@@ -44,6 +45,30 @@ import type { IntegrationUninstallPayload, IntegrationVerifyParams, SkillInstall
 import { augmentProcessPath } from './shell-path';
 
 augmentProcessPath();
+
+function installProcessErrorHandlers(): void {
+  process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException]', err);
+    notifyRenderer({
+      title: 'Something went wrong',
+      description: err.message,
+      variant: 'error',
+    });
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection]', reason);
+    const description = reason instanceof Error ? reason.message : String(reason);
+    notifyRenderer({
+      title: 'Something went wrong',
+      description,
+      variant: 'error',
+    });
+  });
+}
+
+installProcessErrorHandlers();
+bindNotifyWindow(() => mainWindow);
 
 // Only one instance may own the proxy port; focus the existing window instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -165,6 +190,10 @@ async function loadState(): Promise<void> {
     broadcastCaptureUpdate();
     const latest = entry ?? captureStore.list().at(-1);
     if (latest) mcpWaitQueue.notifyCapture(latest);
+  });
+
+  proxyServer.on('notify', (message: string) => {
+    notifyRenderer({ title: 'Proxy error', description: message, variant: 'error' });
   });
 
   if (settings.systemProxyEnabled) {

@@ -240,7 +240,14 @@ export const IPC_CHANNELS = {
   MCP_INTEGRATION_UNINSTALL: 'mcp:integration-uninstall',
   MCP_INTEGRATION_DISMISS_PROMPT: 'mcp:integration-dismiss-prompt',
   DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
+  APP_NOTIFY: 'app:notify',
 } as const;
+
+export type AppNotifyPayload = {
+  title: string;
+  description?: string;
+  variant?: 'error' | 'success' | 'info';
+};
 
 export type MenuAction =
   | 'toggle-proxy'
