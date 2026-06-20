@@ -24,7 +24,7 @@ Define ordered regex rules that return custom responses (inline body, local file
 
 ### Composer
 
-Build HTTP requests, import/export cURL, save collections, and use `{{variable}}` environment substitution.
+Build HTTP requests, import/export cURL, and save collections.
 
 ## Development
 
@@ -67,7 +67,24 @@ Build a local `.dmg`:
 npm run make
 ```
 
-For distribution outside your machine:
+The `.dmg` is produced in `out/make/`. It targets **Apple Silicon (arm64)** only — it will not run on Intel Macs.
+
+### Sharing the unsigned build with others
+
+The build is **not code-signed or notarized**, so macOS Gatekeeper will block it on another machine ("Yanshuf is damaged" or "unidentified developer"). After copying the app to `/Applications`, the recipient can open it one of two ways:
+
+- **Right-click → Open** (then confirm in the dialog), or
+- Clear the quarantine attribute from Terminal:
+
+  ```bash
+  xattr -cr /Applications/Yanshuf.app
+  ```
+
+This only needs to be done once per machine.
+
+> Heads up: Yanshuf changes your macOS system proxy while capturing. If the app is force-quit or crashes, re-open it (it restores the proxy on launch) or turn the proxy off under **System Settings → Network → … → Proxies**.
+
+For signed distribution outside your machine:
 
 1. Enroll in the Apple Developer Program.
 2. Create a Developer ID Application certificate.

@@ -3,8 +3,12 @@ import { ChevronDown, ChevronRight, PenLine, Timer, Zap } from 'lucide-react';
 import type { CaptureEntry, HttpMessage } from '../../../shared/types';
 import { SyntaxHighlight } from '@/components/SyntaxHighlight';
 import { JsonViewer } from '@/components/JsonViewer';
-import { detectContentLanguage, formatDuration } from '../../../shared/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { detectContentLanguage, formatBytes, formatDuration } from '../../../shared/utils';
 import { cn } from '@/lib/utils';
+
+// Above this, skip syntax highlighting / JSON tree (they choke on huge strings).
+const LARGE_BODY_THRESHOLD = 256 * 1024;
 
 interface MessagePaneProps {
   title: string;
@@ -50,6 +54,32 @@ function HeadersSection({ headers }: { headers: Record<string, string> }) {
   );
 }
 
+function LargeBody({ content, size }: { content: string; size?: number }) {
+  const [showFull, setShowFull] = useState(false);
+  const truncated = !showFull && content.length > LARGE_BODY_THRESHOLD;
+  const shown = truncated ? content.slice(0, LARGE_BODY_THRESHOLD) : content;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+        <span>Large body{size ? ` (${formatBytes(size)})` : ''} — syntax highlighting disabled</span>
+        {truncated && (
+          <button
+            type="button"
+            className="rounded border px-1.5 py-0.5 text-foreground hover:bg-accent"
+            onClick={() => setShowFull(true)}
+          >
+            Show full
+          </button>
+        )}
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <pre className="select-text whitespace-pre-wrap break-all p-3 font-mono text-xs">{shown}</pre>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export function MessagePane({ title, message, timing, synthetic }: MessagePaneProps) {
   if (!message) {
     return (
@@ -62,6 +92,7 @@ export function MessagePane({ title, message, timing, synthetic }: MessagePanePr
   const contentType = message.headers['content-type'] ?? message.headers['Content-Type'];
   const bodyContent = message.body?.preview ?? message.body?.content ?? '';
   const language = detectContentLanguage(bodyContent, contentType);
+  const isLarge = bodyContent.length > LARGE_BODY_THRESHOLD;
 
   return (
     <div className="flex h-full flex-col">
@@ -89,7 +120,9 @@ export function MessagePane({ title, message, timing, synthetic }: MessagePanePr
         <HeadersSection headers={message.headers} />
         <div className="min-h-0 flex-1 rounded-md border bg-muted/20">
           {bodyContent ? (
-            language === 'json' ? (
+            isLarge ? (
+              <LargeBody content={bodyContent} size={message.body?.size} />
+            ) : language === 'json' ? (
               <JsonViewer content={bodyContent} />
             ) : (
               <SyntaxHighlight content={bodyContent} language={language} />

@@ -18,5 +18,5 @@
     "isolatedModules": true,
     "strict": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "forge.env.d.ts"]
 }

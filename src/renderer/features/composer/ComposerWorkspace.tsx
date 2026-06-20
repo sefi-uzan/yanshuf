@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   ComposedEntry,
-  ComposerEnvironment,
   ComposerRequest,
 } from '../../../shared/types';
 import { exportCurl } from '../../../shared/composer-curl';
 import { HTTP_METHODS, methodSupportsBody, normalizeBodyForMethod } from '../../../shared/http';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   DropdownMenu,
@@ -27,17 +27,16 @@ import {
 import {
   FloatingLabelInput,
   FloatingLabelSelect,
-  FloatingLabelTextarea,
 } from '@/components/ui/floating-label-input';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
 import { cn } from '@/lib/utils';
+import { copyToClipboard } from '@/lib/copy';
 import { withCertGate } from '@/lib/cert-gate';
 import { captureToComposerRequest } from './captureToComposer';
-import { composedListLabel, MAX_COMPOSED_ENTRIES, requestHostname } from './composerUtils';
-import { notifyDeleted } from '@/lib/toast-actions';
-import { EnvironmentManagerDialog } from './EnvironmentManagerDialog';
-import { MoreVertical, PenLine, Plus, Settings } from 'lucide-react';
+import { composedListLabel, MAX_COMPOSED_ENTRIES } from './composerUtils';
+import { notifyDeleted, notifyRemoved } from '@/lib/toast-actions';
+import { Check, ChevronDown, ChevronRight, Copy, MoreVertical, PenLine, Plus, Trash2, X } from 'lucide-react';
 
 const emptyRequest: ComposerRequest = {
   method: 'GET',
@@ -61,17 +60,21 @@ interface ComposerWorkspaceProps {
 
 export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocked }: ComposerWorkspaceProps) {
   const [request, setRequest] = useState<ComposerRequest>(emptyRequest);
-  const [environments, setEnvironments] = useState<ComposerEnvironment[]>([]);
   const [composed, setComposed] = useState<ComposedEntry[]>([]);
-  const [activeEnvId, setActiveEnvId] = useState('default');
   const [selectedComposedId, setSelectedComposedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [envDialogOpen, setEnvDialogOpen] = useState(false);
   const [composedToDelete, setComposedToDelete] = useState<string | null>(null);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
+  // Bumped whenever the request is replaced wholesale (load/reset) so the
+  // headers editor re-seeds its local rows from the new request.
+  const [editorKey, setEditorKey] = useState(0);
+
+  const applyRequest = (next: ComposerRequest) => {
+    setRequest(next);
+    setEditorKey((key) => key + 1);
+  };
 
   const pendingDelete = composed.find((entry) => entry.id === composedToDelete);
-  const activeEnv = environments.find((env) => env.id === activeEnvId);
-  const variables = activeEnv?.variables ?? {};
   const bodyEnabled = methodSupportsBody(request.method);
   const curlPreview = useMemo(
     () => exportCurl(normalizeRequest(request)),
@@ -79,14 +82,6 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
   );
 
   useEffect(() => {
-    void Promise.all([
-      window.yanshuf.composer.getEnvironments(),
-      window.yanshuf.composer.getSettings(),
-    ]).then(([envs, settings]) => {
-      setEnvironments(envs);
-      const active = envs.find((env) => env.id === settings.activeEnvironmentId)?.id ?? envs[0]?.id ?? 'default';
-      setActiveEnvId(active);
-    });
     void window.yanshuf.composer.getComposed().then(setComposed);
   }, []);
 
@@ -94,45 +89,33 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
     if (!loadFromEntryId) return;
     void window.yanshuf.capture.get(loadFromEntryId).then((entry) => {
       if (entry) {
-        setRequest(normalizeRequest(captureToComposerRequest(entry)));
+        applyRequest(normalizeRequest(captureToComposerRequest(entry)));
         setSelectedComposedId(null);
       }
       onLoadHandled?.();
     });
   }, [loadFromEntryId, onLoadHandled]);
 
-  const saveEnvironments = async (envs: ComposerEnvironment[], nextActiveId: string) => {
-    setEnvironments(envs);
-    setActiveEnvId(nextActiveId);
-    await window.yanshuf.composer.saveEnvironments(envs);
-    await window.yanshuf.composer.saveSettings({ activeEnvironmentId: nextActiveId });
-  };
-
   const saveComposed = async (next: ComposedEntry[]) => {
     setComposed(next);
     await window.yanshuf.composer.saveComposed(next);
   };
 
-  const setActiveEnvironment = async (envId: string) => {
-    setActiveEnvId(envId);
-    await window.yanshuf.composer.saveSettings({ activeEnvironmentId: envId });
-  };
-
   const loadFromCapture = async (entryId: string) => {
     const entry = await window.yanshuf.capture.get(entryId);
     if (!entry) return;
-    setRequest(normalizeRequest(captureToComposerRequest(entry)));
+    applyRequest(normalizeRequest(captureToComposerRequest(entry)));
     setSelectedComposedId(null);
   };
 
   const loadComposed = (entry: ComposedEntry) => {
     setSelectedComposedId(entry.id);
-    setRequest(normalizeRequest({ ...entry.request }));
+    applyRequest(normalizeRequest({ ...entry.request }));
   };
 
   const startNewRequest = () => {
     setSelectedComposedId(null);
-    setRequest(emptyRequest);
+    applyRequest(emptyRequest);
   };
 
   const deleteComposed = (id: string) => {
@@ -144,22 +127,28 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
     }
     if (selectedComposedId === id) {
       setSelectedComposedId(null);
-      setRequest(emptyRequest);
+      applyRequest(emptyRequest);
     }
+  };
+
+  const clearHistory = () => {
+    void saveComposed([]);
+    setSelectedComposedId(null);
+    applyRequest(emptyRequest);
+    notifyRemoved('Composer history');
   };
 
   const send = async () => {
     setLoading(true);
     try {
       const response = await withCertGate(
-        () => window.yanshuf.composer.send(normalizeRequest(request), variables),
+        () => window.yanshuf.composer.send(normalizeRequest(request)),
         () => onCertBlocked?.(),
       );
       if (!response) return;
       const entry: ComposedEntry = {
         id: uuidv4(),
         sentAt: Date.now(),
-        name: request.name?.trim() || requestHostname(request.url),
         request: normalizeRequest({ ...request }),
         lastStatus: response.status,
         lastDurationMs: response.durationMs,
@@ -181,36 +170,27 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
           <span className="text-sm font-medium">Composer</span>
-          <div className="flex items-center gap-1">
-            <select
-              className="h-8 max-w-[160px] truncate rounded-md border border-input bg-background px-2 text-xs"
-              value={activeEnvId}
-              onChange={(e) => void setActiveEnvironment(e.target.value)}
-              aria-label="Active environment"
-            >
-              {environments.map((env) => (
-                <option key={env.id} value={env.id}>{env.name}</option>
-              ))}
-            </select>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 px-2 text-xs"
-              title="Manage environment variables"
-              aria-label="Manage environment variables"
-              onClick={() => setEnvDialogOpen(true)}
-            >
-              <Settings className="mr-1 h-3.5 w-3.5" />
-              Manage
+          <div className="flex items-center gap-1.5">
+            {composed.length > 0 && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                title="Clear composer history"
+                aria-label="Clear composer history"
+                onClick={() => setClearHistoryOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            <Button size="sm" onClick={startNewRequest}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              New Request
             </Button>
           </div>
         </div>
         <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[224px_minmax(0,1fr)] gap-4 p-3">
           <div className="flex min-h-0 flex-col gap-2">
-            <Button size="sm" onClick={startNewRequest}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              New Request
-            </Button>
             <ScrollArea className="min-h-0 flex-1 rounded-md border">
               <div className="pr-1">
                 {composed.length === 0 ? (
@@ -276,112 +256,63 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
             </ScrollArea>
           </div>
 
-          <ScrollArea className="min-h-0 min-w-0">
-            <div className="min-w-0 space-y-3 pt-2.5 pr-3">
-              <div className="flex min-w-0 items-end gap-2">
-                <FloatingLabelSelect
-                  wrapperClassName="w-[112px] shrink-0"
-                  label="Method"
-                  value={request.method}
-                  onChange={(e) => setRequest(normalizeRequest({ ...request, method: e.target.value }))}
-                >
-                  {HTTP_METHODS.map((method) => (
-                    <option key={method} value={method}>{method}</option>
-                  ))}
-                </FloatingLabelSelect>
-                <FloatingLabelInput
-                  wrapperClassName="min-w-0 flex-1"
-                  className="font-mono"
-                  label="URL"
-                  value={request.url}
-                  onChange={(e) => setRequest({ ...request, url: e.target.value })}
-                />
-                <CopyUrlButton value={request.url} title="Copy URL" className="mb-0.5 shrink-0" />
-              </div>
-
-              <div className="flex min-w-0 items-end gap-2">
-                <FloatingLabelInput
-                  wrapperClassName="min-w-0 flex-1"
-                  label="Request name"
-                  value={request.name ?? ''}
-                  onChange={(e) => setRequest({ ...request, name: e.target.value })}
-                />
-                <Button className="mb-0.5 shrink-0" onClick={send} disabled={loading}>
-                  {loading ? 'Sending…' : 'Send Request'}
-                </Button>
-              </div>
-
-              <Tabs defaultValue="body">
-                <TabsList>
-                  <TabsTrigger value="body">Body</TabsTrigger>
-                  <TabsTrigger value="headers">Headers</TabsTrigger>
-                  <TabsTrigger value="curl">cURL</TabsTrigger>
-                  <TabsTrigger value="env">Variables</TabsTrigger>
-                </TabsList>
-                <TabsContent value="body">
-                  <FloatingLabelTextarea
-                    className="min-h-[480px] font-mono text-xs"
-                    label="Request body"
-                    disabled={!bodyEnabled}
-                    value={bodyEnabled ? (request.body ?? '{}') : ''}
-                    onChange={(e) => setRequest({ ...request, body: e.target.value })}
-                  />
-                  {!bodyEnabled && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {request.method.toUpperCase()} requests cannot include a body.
-                    </p>
-                  )}
-                </TabsContent>
-                <TabsContent value="headers">
-                  <FloatingLabelTextarea
-                    className="min-h-[480px] font-mono text-xs"
-                    label="Request headers"
-                    value={Object.entries(request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}
-                    onChange={(e) => {
-                      const headers: Record<string, string> = {};
-                      for (const line of e.target.value.split('\n')) {
-                        const idx = line.indexOf(':');
-                        if (idx > 0) headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-                      }
-                      setRequest({ ...request, headers });
-                    }}
-                  />
-                </TabsContent>
-                <TabsContent value="curl">
-                  <div className="relative min-w-0">
-                    <FloatingLabelTextarea
-                      readOnly
-                      wrapperClassName="w-full"
-                      className="min-h-[320px] pr-10 font-mono text-xs"
-                      label="cURL command"
-                      value={curlPreview}
-                    />
-                    <CopyUrlButton
-                      value={curlPreview}
-                      title="Copy cURL"
-                      className="absolute right-1.5 top-1.5 z-10 h-7 w-7 bg-background/90 hover:bg-accent"
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="env">
-                  <ActiveEnvironmentVariables
-                    environment={activeEnv}
-                    onManage={() => setEnvDialogOpen(true)}
-                  />
-                </TabsContent>
-              </Tabs>
+          <div className="flex min-h-0 min-w-0 flex-col gap-3 pt-2.5">
+            <div className="flex min-w-0 items-end gap-2">
+              <FloatingLabelInput
+                wrapperClassName="min-w-0 flex-1"
+                className="font-mono"
+                label="URL"
+                value={request.url}
+                onChange={(e) => setRequest({ ...request, url: e.target.value })}
+              />
+              <CopyUrlButton value={request.url} title="Copy URL" className="mb-0.5 shrink-0" />
             </div>
-          </ScrollArea>
+
+            <div className="flex items-end gap-2">
+              <FloatingLabelSelect
+                wrapperClassName="w-[112px] shrink-0"
+                label="Method"
+                value={request.method}
+                onChange={(e) => setRequest(normalizeRequest({ ...request, method: e.target.value }))}
+              >
+                {HTTP_METHODS.map((method) => (
+                  <option key={method} value={method}>{method}</option>
+                ))}
+              </FloatingLabelSelect>
+              <div className="flex-1" />
+              <CopyCurlButton value={curlPreview} className="mb-0.5 shrink-0" />
+              <Button className="mb-0.5 shrink-0" onClick={send} disabled={loading}>
+                {loading ? 'Sending…' : 'Send Request'}
+              </Button>
+            </div>
+
+            <RequestHeadersEditor
+              key={editorKey}
+              headers={request.headers}
+              onChange={(headers) => setRequest((prev) => ({ ...prev, headers }))}
+            />
+
+            <div className="flex min-h-0 flex-1 flex-col rounded-md border">
+              <div className="flex shrink-0 items-center justify-between border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+                <span>Body</span>
+                {!bodyEnabled && (
+                  <span className="font-normal text-muted-foreground/70">
+                    {request.method.toUpperCase()} has no body
+                  </span>
+                )}
+              </div>
+              <Textarea
+                className="min-h-0 flex-1 resize-none rounded-none border-0 bg-muted/20 font-mono text-xs shadow-none focus-visible:ring-0 disabled:opacity-60"
+                spellCheck={false}
+                disabled={!bodyEnabled}
+                placeholder={bodyEnabled ? 'Request body' : `${request.method.toUpperCase()} requests cannot include a body`}
+                value={bodyEnabled ? (request.body ?? '') : ''}
+                onChange={(e) => setRequest((prev) => ({ ...prev, body: e.target.value }))}
+              />
+            </div>
+          </div>
         </div>
       </div>
-
-      <EnvironmentManagerDialog
-        open={envDialogOpen}
-        environments={environments}
-        activeEnvironmentId={activeEnvId}
-        onOpenChange={setEnvDialogOpen}
-        onSave={(envs, nextActiveId) => void saveEnvironments(envs, nextActiveId)}
-      />
 
       <Dialog open={composedToDelete !== null} onOpenChange={(open) => !open && setComposedToDelete(null)}>
         <DialogContent>
@@ -405,83 +336,178 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocke
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={clearHistoryOpen} onOpenChange={setClearHistoryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear composer history?</DialogTitle>
+            <DialogDescription>
+              This will remove all {composed.length} sent request{composed.length === 1 ? '' : 's'} from your history. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setClearHistoryOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                clearHistory();
+                setClearHistoryOpen(false);
+              }}
+            >
+              Clear history
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DropCaptureZone>
   );
 }
 
-function ActiveEnvironmentVariables({
-  environment,
-  onManage,
-}: {
-  environment: ComposerEnvironment | undefined;
-  onManage: () => void;
-}) {
-  if (!environment) {
-    return (
-      <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-        <p className="text-sm text-muted-foreground">No environment selected.</p>
-      </div>
-    );
-  }
+function CopyCurlButton({ value, className }: { value: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
 
-  const entries = Object.entries(environment.variables);
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(value, { message: 'cURL copied to clipboard' });
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
-    <div className="min-h-[280px] rounded-lg border bg-muted/10">
-      <div className="flex items-start justify-between gap-3 border-b bg-muted/20 px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{environment.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {entries.length === 0
-              ? 'No variables configured'
-              : `${entries.length} variable${entries.length === 1 ? '' : 's'} available for substitution`}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          title="Manage environment variables"
-          onClick={onManage}
+    <Button
+      type="button"
+      variant="outline"
+      className={className}
+      title="Copy as cURL"
+      disabled={!value}
+      onClick={() => void handleCopy()}
+    >
+      {copied ? (
+        <Check className="mr-1 h-3.5 w-3.5 text-emerald-500" />
+      ) : (
+        <Copy className="mr-1 h-3.5 w-3.5" />
+      )}
+      cURL
+    </Button>
+  );
+}
+
+interface HeaderRow {
+  id: string;
+  key: string;
+  value: string;
+}
+
+function headersToRows(headers: Record<string, string>): HeaderRow[] {
+  return Object.entries(headers).map(([key, value]) => ({ id: uuidv4(), key, value }));
+}
+
+function rowsToHeaders(rows: HeaderRow[]): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (key) headers[key] = row.value;
+  }
+  return headers;
+}
+
+function RequestHeadersEditor({
+  headers,
+  onChange,
+}: {
+  headers: Record<string, string>;
+  onChange: (headers: Record<string, string>) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [rows, setRows] = useState<HeaderRow[]>(() => headersToRows(headers));
+
+  const commit = (next: HeaderRow[]) => {
+    setRows(next);
+    onChange(rowsToHeaders(next));
+  };
+
+  const addRow = () => {
+    setOpen(true);
+    commit([...rows, { id: uuidv4(), key: '', value: '' }]);
+  };
+
+  const count = rows.filter((row) => row.key.trim()).length;
+
+  return (
+    <div className="rounded-md border">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent/50"
         >
-          <Settings className="mr-1 h-3.5 w-3.5" />
-          Manage
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          )}
+          Headers
+          {count > 0 && <span className="font-normal text-muted-foreground/70">({count})</span>}
+        </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mr-1 h-7 shrink-0 px-2 text-xs"
+          onClick={addRow}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          Add
         </Button>
       </div>
-
-      {entries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            Add variables to reuse values across requests.
-          </p>
-          <p className="mt-2 max-w-sm text-xs text-muted-foreground/80">
-            Reference them as{' '}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{'{{baseUrl}}'}</code>
-            {' '}in your URL, headers, or body.
-          </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={onManage}>
-            Open environment manager
-          </Button>
-        </div>
-      ) : (
-        <div>
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] border-b bg-muted/30 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            <span>Variable</span>
-            <span>Value</span>
-          </div>
-          <div className="divide-y">
-            {entries.map(([key, value]) => (
+      {open && (
+        <div className="border-t">
+          {rows.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No headers.{' '}
+              <button type="button" className="text-foreground underline-offset-2 hover:underline" onClick={addRow}>
+                Add one
+              </button>
+            </div>
+          ) : (
+            rows.map((row, index) => (
               <div
-                key={key}
-                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3 px-4 py-2.5 font-mono text-xs"
+                key={row.id}
+                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_32px] items-center gap-2 border-b px-2 py-1.5 last:border-b-0"
               >
-                <span className="truncate text-muted-foreground">{key}</span>
-                <span className={cn('truncate', !value && 'italic text-muted-foreground/60')}>
-                  {value || 'empty'}
-                </span>
+                <Input
+                  className="h-7 font-mono text-xs"
+                  placeholder="Header"
+                  value={row.key}
+                  onChange={(e) => {
+                    const next = [...rows];
+                    next[index] = { ...row, key: e.target.value };
+                    commit(next);
+                  }}
+                />
+                <Input
+                  className="h-7 font-mono text-xs"
+                  placeholder="Value"
+                  value={row.value}
+                  onChange={(e) => {
+                    const next = [...rows];
+                    next[index] = { ...row, value: e.target.value };
+                    commit(next);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  aria-label="Remove header"
+                  onClick={() => commit(rows.filter((item) => item.id !== row.id))}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
       )}
     </div>

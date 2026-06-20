@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import { Proxy } from 'http-mitm-proxy';
 import { v4 as uuidv4 } from 'uuid';
 import type { AutoResponderEngine } from '../auto-responder/engine';
@@ -25,11 +26,62 @@ export interface ProxyServerOptions {
   shouldCapture?: (url: string) => boolean;
 }
 
+/** Discard pending captures whose connections never completed after this long. */
+const PENDING_SWEEP_INTERVAL_MS = 30_000;
+const PENDING_MAX_AGE_MS = 5 * 60_000;
+
+export class ProxyPortInUseError extends Error {
+  port: number;
+
+  constructor(port: number) {
+    super(`Port ${port} is already in use`);
+    this.name = 'ProxyPortInUseError';
+    this.port = port;
+  }
+}
+
+/** Resolve true when nothing is listening on host:port (so we can bind it). */
+function isPortAvailable(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once('error', (err: NodeJS.ErrnoException) => {
+      tester.close();
+      resolve(err.code !== 'EADDRINUSE' && err.code !== 'EACCES');
+    });
+    tester.once('listening', () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(port, host);
+  });
+}
+
+/** Accumulate body chunks but stop retaining once we exceed the cap, to bound memory. */
+class CappedBuffer {
+  private chunks: Buffer[] = [];
+  private retained = 0;
+  total = 0;
+
+  constructor(private readonly cap: number) {}
+
+  push(chunk: Buffer): void {
+    this.total += chunk.length;
+    if (this.retained >= this.cap) return;
+    const remaining = this.cap - this.retained;
+    this.chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+    this.retained += Math.min(chunk.length, remaining);
+  }
+
+  concat(): Buffer {
+    return Buffer.concat(this.chunks);
+  }
+}
+
 export class ProxyServer extends EventEmitter {
   private proxy: Proxy | null = null;
   private options: ProxyServerOptions;
   private pending = new Map<string, PendingCapture>();
   private running = false;
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ProxyServerOptions) {
     super();
@@ -44,17 +96,24 @@ export class ProxyServer extends EventEmitter {
     return this.options.port;
   }
 
-  start(): Promise<void> {
-    if (this.running) return Promise.resolve();
+  async start(): Promise<void> {
+    if (this.running) return;
+
+    if (!(await isPortAvailable(this.options.port, this.options.host))) {
+      throw new ProxyPortInUseError(this.options.port);
+    }
 
     return new Promise((resolve, reject) => {
       installProxyConsoleFilter();
       const proxy = new Proxy();
       this.proxy = proxy;
 
-      proxy.onError((_ctx, err, kind) => {
+      proxy.onError((ctx, err, kind) => {
+        // Drop any pending capture tied to this connection so it can't leak.
+        const id = ctx ? (ctx as { yanshufId?: string }).yanshufId : undefined;
+        if (id) this.pending.delete(id);
         if (err && isBenignProxyError(err, kind)) return;
-        this.emit('error', err);
+        if (this.running) this.emit('error', err);
       });
 
       proxy.use(Proxy.gunzip);
@@ -75,7 +134,10 @@ export class ProxyServer extends EventEmitter {
         const headers = fromComposer ? stripComposerCaptureHeader(rawHeaders) : rawHeaders;
         const info = extractRequestInfo(method, url, req.headers, ctx.isSSL);
         const id = uuidv4();
+        (ctx as { yanshufId?: string }).yanshufId = id;
 
+        const maxBodySize = this.options.maxBodySize;
+        const requestBody = new CappedBuffer(maxBodySize);
         const pending: PendingCapture = {
           id,
           startedAt: Date.now(),
@@ -86,26 +148,24 @@ export class ProxyServer extends EventEmitter {
           tls: ctx.isSSL,
           protocol: detectProtocol(req.httpVersion, ctx.isSSL),
           requestHeaders: headers,
-          requestChunks: [],
+          requestBody,
           fromComposer,
         };
 
         this.pending.set(id, pending);
 
-        const requestBodyChunks: Buffer[] = [];
         ctx.onRequestData((_ctx, chunk, cb) => {
-          requestBodyChunks.push(chunk);
+          requestBody.push(chunk);
           cb(null, chunk);
         });
 
         ctx.onRequestEnd((_ctx, cb) => {
-          pending.requestChunks = requestBodyChunks;
           cb();
         });
 
-        const responseChunks: Buffer[] = [];
+        const responseBody = new CappedBuffer(maxBodySize);
         ctx.onResponseData((_ctx, chunk, cb) => {
-          responseChunks.push(chunk);
+          responseBody.push(chunk);
           cb(null, chunk);
         });
 
@@ -119,15 +179,8 @@ export class ProxyServer extends EventEmitter {
 
           const status = ctx.serverToProxyResponse?.statusCode ?? 0;
           const responseHeaders = headersToRecord(ctx.serverToProxyResponse?.headers ?? {});
-          const responseBody = Buffer.concat(responseChunks);
 
-          const entry = buildCaptureEntry(
-            stored,
-            status,
-            responseHeaders,
-            responseBody,
-            this.options.maxBodySize,
-          );
+          const entry = buildCaptureEntry(stored, status, responseHeaders, responseBody, maxBodySize);
           if (!this.options.shouldCapture || this.options.shouldCapture(stored.url)) {
             this.options.captureStore.add(entry);
             this.emit('capture', entry);
@@ -157,19 +210,37 @@ export class ProxyServer extends EventEmitter {
         },
         () => {
           this.running = true;
+          this.startPendingSweep();
           resolve();
         },
       );
 
-      proxy.onError((_ctx, err, kind) => {
+      proxy.onError((_ctx, err) => {
         if (!this.running) {
           uninstallProxyConsoleFilter();
+          this.proxy = null;
           reject(err);
-          return;
         }
-        if (err && isBenignProxyError(err, kind)) return;
       });
     });
+  }
+
+  private startPendingSweep(): void {
+    this.stopPendingSweep();
+    this.sweepTimer = setInterval(() => {
+      const cutoff = Date.now() - PENDING_MAX_AGE_MS;
+      for (const [id, pending] of this.pending) {
+        if (pending.startedAt < cutoff) this.pending.delete(id);
+      }
+    }, PENDING_SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref?.();
+  }
+
+  private stopPendingSweep(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
   }
 
   private async respondWithRule(
@@ -189,11 +260,13 @@ export class ProxyServer extends EventEmitter {
       ctx.proxyToClientResponse.writeHead(synthetic.status, responseHeaders);
       ctx.proxyToClientResponse.end(synthetic.body);
 
+      const responseBody = new CappedBuffer(this.options.maxBodySize);
+      responseBody.push(synthetic.body);
       const entry = buildCaptureEntry(
         pending,
         synthetic.status,
         responseHeaders,
-        synthetic.body,
+        responseBody,
         this.options.maxBodySize,
       );
       if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
@@ -207,6 +280,7 @@ export class ProxyServer extends EventEmitter {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      this.stopPendingSweep();
       if (!this.proxy || !this.running) {
         resolve();
         return;

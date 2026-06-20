@@ -7,10 +7,8 @@ import type {
   CertStatus,
   ComposedEntry,
   ComposerCollection,
-  ComposerEnvironment,
   ComposerRequest,
   ComposerResponse,
-  ComposerSettings,
   MenuAction,
   ProxyStatus,
 } from '../shared/types';
@@ -46,17 +44,13 @@ export interface YanshufAPI {
     save: (rules: AutoResponderRule[]) => Promise<AutoResponderRule[]>;
   };
   composer: {
-    send: (req: ComposerRequest, vars: Record<string, string>) => Promise<ComposerResponse>;
+    send: (req: ComposerRequest) => Promise<ComposerResponse>;
     parseCurl: (curl: string) => Promise<ComposerRequest>;
     exportCurl: (req: ComposerRequest) => Promise<string>;
     getCollections: () => Promise<ComposerCollection[]>;
     saveCollections: (collections: ComposerCollection[]) => Promise<void>;
-    getEnvironments: () => Promise<ComposerEnvironment[]>;
-    saveEnvironments: (envs: ComposerEnvironment[]) => Promise<void>;
     getComposed: () => Promise<ComposedEntry[]>;
     saveComposed: (entries: ComposedEntry[]) => Promise<void>;
-    getSettings: () => Promise<ComposerSettings>;
-    saveSettings: (settings: ComposerSettings) => Promise<void>;
   };
   settings: {
     get: () => Promise<AppSettings>;
@@ -104,17 +98,13 @@ const api: YanshufAPI = {
     save: (rules) => ipcRenderer.invoke(IPC_CHANNELS.RULES_SAVE, rules),
   },
   composer: {
-    send: (req, vars) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SEND, req, vars),
+    send: (req) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SEND, req),
     parseCurl: (curl) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_PARSE_CURL, curl),
     exportCurl: (req) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_EXPORT_CURL, req),
     getCollections: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COLLECTIONS_GET),
     saveCollections: (collections) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COLLECTIONS_SAVE, collections),
-    getEnvironments: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_ENVIRONMENTS_GET),
-    saveEnvironments: (envs) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_ENVIRONMENTS_SAVE, envs),
     getComposed: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COMPOSED_GET),
     saveComposed: (entries) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COMPOSED_SAVE, entries),
-    getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SETTINGS_GET),
-    saveSettings: (settings) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SETTINGS_SAVE, settings),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),

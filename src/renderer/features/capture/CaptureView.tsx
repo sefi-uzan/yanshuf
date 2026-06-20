@@ -1,19 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { CaptureEntry, CaptureEntrySummary, CertStatus, ProxyStatus } from '../../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Search } from 'lucide-react';
+import { Search, Shield } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
-import { SHORTCUTS } from '../../../shared/shortcuts';
+import { SHORTCUTS, type ShortcutKey } from '../../../shared/shortcuts';
 import type { DetailMode } from './detailMode';
 import { ComposerWorkspace } from '@/features/composer/ComposerWorkspace';
 import { AutoResponderWorkspace } from '@/features/auto-responder/AutoResponderWorkspace';
 import { withCertGate } from '@/lib/cert-gate';
+import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
 
 interface CaptureViewProps {
   searchQuery: string;
@@ -56,10 +58,10 @@ export function CaptureView({
   useEffect(() => {
     void window.yanshuf.capture.list().then(setEntries);
     void window.yanshuf.proxy.status().then(setStatus);
+    // Proxy on/off state doesn't change per request, so we don't re-poll status here.
     return window.yanshuf.capture.onUpdated((next) => {
       setEntries(next);
       if (next.length === 0) setSelectedId(null);
-      void window.yanshuf.proxy.status().then(setStatus);
     });
   }, []);
 
@@ -81,29 +83,41 @@ export function CaptureView({
   };
 
   const toggleProxy = async () => {
-    if (status?.running) {
-      const next = await window.yanshuf.proxy.stop();
-      setStatus(next);
-      return;
+    try {
+      if (status?.running) {
+        const next = await window.yanshuf.proxy.stop();
+        setStatus(next);
+        return;
+      }
+      const next = await withCertGate(
+        () => window.yanshuf.proxy.start(),
+        () => onOpenCertificateSettings?.(),
+      );
+      if (next) setStatus(next);
+    } catch (err) {
+      notifyActionFailed('start capture', err);
     }
-    const next = await withCertGate(
-      () => window.yanshuf.proxy.start(),
-      () => onOpenCertificateSettings?.(),
-    );
-    if (next) setStatus(next);
   };
 
   const toggleSystemProxy = async () => {
-    if (status?.systemProxyEnabled) {
-      const next = await window.yanshuf.systemProxy.disable();
-      setStatus(next);
-      return;
+    try {
+      if (status?.systemProxyEnabled) {
+        const next = await window.yanshuf.systemProxy.disable();
+        setStatus(next);
+        return;
+      }
+      const next = await withCertGate(
+        () => window.yanshuf.systemProxy.enable(),
+        () => onOpenCertificateSettings?.(),
+      );
+      if (next) setStatus(next);
+    } catch (err) {
+      notifyActionFailed('enable system proxy', err);
     }
-    const next = await withCertGate(
-      () => window.yanshuf.systemProxy.enable(),
-      () => onOpenCertificateSettings?.(),
-    );
-    if (next) setStatus(next);
+  };
+
+  const clearSession = () => {
+    void clearCapturedRequests();
   };
 
   return (
@@ -170,9 +184,11 @@ export function CaptureView({
       </Group>
       <StatusBar
         status={status}
+        entryCount={entries.length}
         certStatus={certStatus}
         onToggleProxy={toggleProxy}
         onToggleSystemProxy={toggleSystemProxy}
+        onClear={clearSession}
         onOpenCertificateSettings={onOpenCertificateSettings}
       />
     </div>
@@ -181,70 +197,123 @@ export function CaptureView({
 
 function StatusBar({
   status,
+  entryCount,
   certStatus,
   onToggleProxy,
   onToggleSystemProxy,
+  onClear,
   onOpenCertificateSettings,
 }: {
   status: ProxyStatus | null;
+  entryCount: number;
   certStatus?: CertStatus | null;
   onToggleProxy: () => void;
   onToggleSystemProxy: () => void;
+  onClear: () => void;
   onOpenCertificateSettings?: () => void;
 }) {
   const certLabel =
     certStatus?.trusted === 'installed'
-      ? 'Cert: Trusted'
+      ? 'Trusted'
       : certStatus?.trusted === 'untrusted'
-        ? 'Cert: Needs trust'
-        : 'Cert: Not installed';
-  const certVariant =
+        ? 'Needs trust'
+        : 'Certificate';
+  const certTitle =
     certStatus?.trusted === 'installed'
-      ? 'success'
+      ? 'Certificate installed and trusted'
       : certStatus?.trusted === 'untrusted'
-        ? 'outline'
-        : 'secondary';
+        ? 'Certificate needs Always Trust'
+        : 'Install root certificate';
 
   return (
     <div className="flex items-center gap-3 border-t bg-muted/30 px-3 py-1.5 text-xs">
-      <div data-tour="status-bar-toggles" className="flex items-center gap-3">
-        <Badge variant={status?.running ? 'success' : 'secondary'}>
-          Proxy {status?.running ? 'On' : 'Off'}
-        </Badge>
-        <Button variant="ghost" size="sm" className="h-7 gap-2 px-2" onClick={onToggleProxy}>
-          Toggle Capture
-          <ShortcutHint keys={SHORTCUTS.toggleCapture.keys} />
-        </Button>
-        <Badge variant={status?.systemProxyEnabled ? 'success' : 'outline'}>
-          System Proxy {status?.systemProxyEnabled ? 'On' : 'Off'}
-        </Badge>
-        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onToggleSystemProxy}>
-          Toggle System Proxy
-        </Button>
+      <div data-tour="status-bar-toggles" className="flex items-center gap-2">
+        <StatusToggle
+          label="Capture"
+          active={status?.running ?? false}
+          onToggle={onToggleProxy}
+          shortcutKeys={SHORTCUTS.toggleCapture.keys}
+        />
+        <StatusToggle
+          label="System Proxy"
+          active={status?.systemProxyEnabled ?? false}
+          onToggle={onToggleSystemProxy}
+        />
       </div>
       <button
         type="button"
-        className="inline-flex"
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
+          certStatus?.trusted === 'installed' &&
+            'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+          certStatus?.trusted === 'untrusted' &&
+            'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+          certStatus?.trusted !== 'installed' &&
+            certStatus?.trusted !== 'untrusted' &&
+            'border-border bg-background/60 text-muted-foreground',
+        )}
         onClick={() => onOpenCertificateSettings?.()}
-        title="Open certificate settings"
+        title={certTitle}
       >
-        <Badge
-          variant={certVariant}
-          className={certStatus?.trusted === 'untrusted' ? 'border-amber-500 text-amber-700 dark:text-amber-300' : undefined}
-        >
-          {certLabel}
-        </Badge>
+        <Shield
+          className={cn(
+            'h-3.5 w-3.5',
+            certStatus?.trusted === 'installed' && 'text-emerald-600 dark:text-emerald-400',
+            certStatus?.trusted === 'untrusted' && 'text-amber-600 dark:text-amber-400',
+          )}
+        />
+        {certLabel}
       </button>
       <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
-      <span className="text-muted-foreground">Entries: {status?.entryCount ?? 0}</span>
+      <span className="text-muted-foreground">Entries: {entryCount}</span>
       <div className="ml-auto flex items-center gap-2">
-        <span className="flex items-center gap-1 text-muted-foreground">
+        <Button variant="ghost" size="sm" className="h-7 gap-2 px-2 text-muted-foreground" onClick={onClear}>
           Clear
           <ShortcutHint keys={SHORTCUTS.clearSession.keys} />
-        </span>
+        </Button>
         <ShortcutLegend />
       </div>
     </div>
+  );
+}
+
+function StatusToggle({
+  label,
+  active,
+  onToggle,
+  shortcutKeys,
+}: {
+  label: string;
+  active: boolean;
+  onToggle: () => void;
+  shortcutKeys?: ShortcutKey[];
+}) {
+  const id = useId();
+
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        'inline-flex h-7 cursor-pointer select-none items-center gap-2 rounded-md border border-input bg-background px-2 shadow-sm transition-colors hover:bg-accent/50',
+        active && 'border-emerald-500/35 bg-emerald-500/[0.06]',
+      )}
+    >
+      <span
+        className={cn(
+          'h-2 w-2 shrink-0 rounded-full transition-colors',
+          active ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.45)]' : 'bg-muted-foreground/35',
+        )}
+        aria-hidden
+      />
+      <span className="text-xs font-medium">{label}</span>
+      {shortcutKeys && <ShortcutHint keys={shortcutKeys} />}
+      <Switch
+        id={id}
+        checked={active}
+        onCheckedChange={onToggle}
+        className={cn('scale-90', active && 'data-[state=checked]:bg-emerald-600')}
+      />
+    </label>
   );
 }
 

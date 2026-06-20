@@ -14,7 +14,7 @@ const CA_ATTRS: forge.pki.CertificateField[] = [
   { shortName: 'OU', value: 'Root CA' },
 ];
 
-const CA_EXTENSIONS: forge.pki.CertificateExtension[] = [
+const CA_EXTENSIONS: Parameters<forge.pki.Certificate['setExtensions']>[0] = [
   { name: 'basicConstraints', cA: true },
   {
     name: 'keyUsage',
@@ -98,6 +98,8 @@ export async function generateCa(certsDir: string): Promise<void> {
   const keysFolder = path.join(certsDir, 'keys');
   await fs.mkdir(certsFolder, { recursive: true });
   await fs.mkdir(keysFolder, { recursive: true });
+  // The CA private key can decrypt all intercepted TLS — keep it owner-only.
+  await fs.chmod(keysFolder, 0o700).catch(() => undefined);
 
   const keys = await generateKeyPair();
   const cert = pki.createCertificate();
@@ -114,7 +116,9 @@ export async function generateCa(certsDir: string): Promise<void> {
 
   await Promise.all([
     fs.writeFile(path.join(certsFolder, 'ca.pem'), pki.certificateToPem(cert)),
-    fs.writeFile(path.join(keysFolder, 'ca.private.key'), pki.privateKeyToPem(keys.privateKey)),
+    fs.writeFile(path.join(keysFolder, 'ca.private.key'), pki.privateKeyToPem(keys.privateKey), {
+      mode: 0o600,
+    }),
     fs.writeFile(path.join(keysFolder, 'ca.public.key'), pki.publicKeyToPem(keys.publicKey)),
   ]);
 }

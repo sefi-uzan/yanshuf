@@ -62,6 +62,12 @@ export class CaptureStore {
   }
 }
 
+/** A body accumulator that may retain fewer bytes than it saw (see CappedBuffer). */
+export interface BodySource {
+  concat(): Buffer;
+  total: number;
+}
+
 export interface PendingCapture {
   id: string;
   startedAt: number;
@@ -72,7 +78,7 @@ export interface PendingCapture {
   tls: boolean;
   protocol: 'http1' | 'http2' | 'connect';
   requestHeaders: Record<string, string>;
-  requestChunks: Buffer[];
+  requestBody: BodySource;
   matchedRuleId?: string;
   fromComposer?: boolean;
 }
@@ -81,12 +87,13 @@ export function buildCaptureEntry(
   pending: PendingCapture,
   status: number,
   responseHeaders: Record<string, string>,
-  responseBody: Buffer,
+  responseBody: BodySource,
   maxBodySize: number,
 ): CaptureEntry {
-  const requestBody = Buffer.concat(pending.requestChunks);
-  const reqBodyRef = bodyPreview(requestBody.subarray(0, maxBodySize));
-  const resBodyRef = bodyPreview(responseBody.subarray(0, maxBodySize));
+  const requestBytes = pending.requestBody.concat();
+  const responseBytes = responseBody.concat();
+  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
+  const resBodyRef = bodyPreview(responseBytes, maxBodySize, responseBody.total);
   const durationMs = Date.now() - pending.startedAt;
 
   return {
@@ -102,8 +109,8 @@ export function buildCaptureEntry(
     protocol: pending.protocol,
     matchedRuleId: pending.matchedRuleId,
     fromComposer: pending.fromComposer,
-    requestBodySize: requestBody.length,
-    responseBodySize: responseBody.length,
+    requestBodySize: pending.requestBody.total,
+    responseBodySize: responseBody.total,
     client: {
       method: pending.method,
       url: pending.url,

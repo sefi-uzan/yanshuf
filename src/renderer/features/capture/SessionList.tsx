@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CaptureEntrySummary } from '../../../shared/types';
 import { Badge } from '@/components/ui/badge';
@@ -60,7 +60,10 @@ export function SessionList({
   onAddToComposer,
   onCreateRule,
 }: SessionListProps) {
-  const filtered = entries.filter((e) => matchesSearch(e, searchQuery));
+  const filtered = useMemo(
+    () => entries.filter((e) => matchesSearch(e, searchQuery)),
+    [entries, searchQuery],
+  );
   const parentRef = useRef<HTMLDivElement>(null);
   const prevEntryCountRef = useRef(entries.length);
 
@@ -75,12 +78,19 @@ export function SessionList({
 
   useEffect(() => {
     const prevCount = prevEntryCountRef.current;
-    if (entries.length > prevCount && filtered.length > 0) {
-      requestAnimationFrame(() => {
-        virtualizerRef.current.scrollToIndex(filtered.length - 1, { align: 'end' });
-      });
-    }
     prevEntryCountRef.current = entries.length;
+    if (entries.length <= prevCount || filtered.length === 0) return;
+
+    // Only auto-follow new rows when the user is already near the bottom,
+    // so we don't yank them away while they're inspecting an earlier request.
+    const el = parentRef.current;
+    const nearBottom =
+      !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (!nearBottom) return;
+
+    requestAnimationFrame(() => {
+      virtualizerRef.current.scrollToIndex(filtered.length - 1, { align: 'end' });
+    });
   }, [entries.length, filtered.length]);
 
   return (

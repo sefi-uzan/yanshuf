@@ -6,6 +6,5 @@ export function captureToComposerRequest(entry: CaptureEntry): ComposerRequest {
     url: entry.client.url,
     headers: entry.client.headers,
     body: entry.client.body?.preview ?? '',
-    name: entry.host,
   };
 }

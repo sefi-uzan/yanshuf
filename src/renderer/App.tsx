@@ -10,7 +10,7 @@ import { ShortcutHint } from '@/components/shortcut-hints';
 import { cn } from '@/lib/utils';
 import { withCertGate } from '@/lib/cert-gate';
 import { clearCapturedRequests } from '@/lib/toast-actions';
-import { Settings, Shield, Zap, PenLine, Search } from 'lucide-react';
+import { Settings, Zap, PenLine, Search } from 'lucide-react';
 import type { CertStatus } from '../shared/types';
 import { SHORTCUTS } from '../shared/shortcuts';
 
@@ -36,6 +36,18 @@ export default function App() {
     setOnboardingOpen(true);
   }, []);
 
+  const openSettings = useCallback(() => {
+    setSettingsTab('general');
+    setSettingsOpen(true);
+  }, []);
+
+  const toggleSettings = useCallback(() => {
+    setSettingsOpen((open) => {
+      if (!open) setSettingsTab('general');
+      return !open;
+    });
+  }, []);
+
   const openCertificateSettings = useCallback(() => {
     setSettingsTab('certificate');
     setSettingsOpen(true);
@@ -53,12 +65,6 @@ export default function App() {
     setTourOpen(false);
     const current = await window.yanshuf.settings.get();
     await window.yanshuf.settings.save({ ...current, guidedTourCompleted: true });
-  }, []);
-
-  const replayTour = useCallback(() => {
-    setSettingsOpen(false);
-    setDetailMode('capture');
-    setTourOpen(true);
   }, []);
 
   const handleCertOnboardingComplete = useCallback(async () => {
@@ -99,6 +105,7 @@ export default function App() {
         } else {
           await withCertGate(() => window.yanshuf.proxy.start(), openCertOnboarding);
         }
+        setProxyStatusNonce((n) => n + 1);
         break;
       }
       case 'toggle-system-proxy': {
@@ -108,6 +115,7 @@ export default function App() {
         } else {
           await withCertGate(() => window.yanshuf.systemProxy.enable(), openCertOnboarding);
         }
+        setProxyStatusNonce((n) => n + 1);
         break;
       }
       case 'clear-session':
@@ -125,8 +133,11 @@ export default function App() {
       case 'install-certificate':
         openCertFlow();
         break;
+      case 'open-settings':
+        openSettings();
+        break;
     }
-  }, [toggleDetailMode, openCertFlow, openCertOnboarding]);
+  }, [toggleDetailMode, openCertFlow, openCertOnboarding, openSettings]);
 
   useEffect(() => {
     return window.yanshuf.menu.onAction(handleMenuAction);
@@ -152,6 +163,10 @@ export default function App() {
         e.preventDefault();
         toggleDetailMode('rules');
       }
+      if (e.metaKey && e.key === 's' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        toggleSettings();
+      }
       if (e.metaKey && e.key === 'x' && !e.shiftKey && !isEditableTarget(e.target)) {
         e.preventDefault();
         void clearCapturedRequests();
@@ -159,7 +174,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [toggleDetailMode]);
+  }, [toggleDetailMode, toggleSettings]);
 
   return (
     <div className="flex h-full flex-col">
@@ -196,32 +211,10 @@ export default function App() {
               <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-2" />
             </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={openCertFlow}
-            title={
-              certStatus?.trusted === 'installed'
-                ? 'Certificate installed and trusted'
-                : certStatus?.trusted === 'untrusted'
-                  ? 'Certificate needs Always Trust'
-                  : 'Install root certificate'
-            }
-          >
-            <Shield
-              className={cn(
-                'mr-1 h-4 w-4',
-                certStatus?.trusted === 'installed' && 'text-emerald-600 dark:text-emerald-400',
-                certStatus?.trusted === 'untrusted' && 'text-amber-600 dark:text-amber-400',
-              )}
-            />
-            Certificate
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => {
-            setSettingsTab('general');
-            setSettingsOpen(true);
-          }}>
-            <Settings className="h-4 w-4" />
+          <Button variant="ghost" size="sm" onClick={openSettings}>
+            <Settings className="mr-1 h-4 w-4" />
+            Settings
+            <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-2" />
           </Button>
         </div>
       </header>
@@ -271,7 +264,6 @@ export default function App() {
           setSettingsOpen(false);
           setOnboardingOpen(true);
         }}
-        onReplayTour={replayTour}
         certStatus={certStatus}
       />
     </div>
