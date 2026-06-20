@@ -4,13 +4,14 @@ import { DEFAULT_SETTINGS , SHORTCUTS, formatShortcutParts } from '@yanshuf/shar
 import { Button , Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle , Input , Separator , Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
 import { Kbd, useShortcutHints } from '@/components/shortcut-hints';
 import { cn } from '@yanshuf/ui/lib/utils';
-import { Loader2, Shield, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Plug, Shield, SlidersHorizontal } from 'lucide-react';
 import { CaptureFilterFields } from './CaptureFilterFields';
 import { CertificateSettings } from './CertificateSettings';
+import { McpIntegrationPanel } from './McpIntegrationPanel';
 import { SettingsFooter, SettingsSection } from './SettingsLayout';
 import { clearCapturedRequests, notifyActionFailed, notifySaved } from '@/lib/toast-actions';
 
-export type SettingsTab = 'general' | 'certificate';
+export type SettingsTab = 'general' | 'certificate' | 'integrations';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -38,6 +39,7 @@ const NAV_ITEMS: {
 }[] = [
   { value: 'general', label: 'General', icon: SlidersHorizontal },
   { value: 'certificate', label: 'Certificate', icon: Shield },
+  { value: 'integrations', label: 'Integrations', icon: Plug },
 ];
 
 export function SettingsPanel({
@@ -60,6 +62,7 @@ export function SettingsPanel({
   const [initialFilterUrls, setInitialFilterUrls] = useState('');
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
   const [saving, setSaving] = useState(false);
+  const [integrationClient, setIntegrationClient] = useState<'cursor' | 'claude-code' | null>(null);
   const { hintsVisible } = useShortcutHints();
 
   useEffect(() => {
@@ -292,9 +295,35 @@ export function SettingsPanel({
                   onOpenOnboarding={onOpenCertOnboarding}
                 />
               </TabsContent>
+
+              <TabsContent value="integrations" className="mt-0 space-y-4 focus-visible:outline-none">
+                <p className="text-sm text-muted-foreground">
+                  Connect Yanshuf to AI coding tools via MCP. Installs server config, the /yanshuf skill, and a
+                  sessionEnd cleanup hook.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => setIntegrationClient('cursor')}>
+                    Add to Cursor
+                  </Button>
+                  <Button variant="outline" onClick={() => setIntegrationClient('claude-code')}>
+                    Add to Claude Code
+                  </Button>
+                </div>
+              </TabsContent>
             </div>
           </div>
         </Tabs>
+
+        {integrationClient && (
+          <McpIntegrationPanel
+            open={Boolean(integrationClient)}
+            onOpenChange={(next) => {
+              if (!next) setIntegrationClient(null);
+            }}
+            client={integrationClient}
+            certTrusted={certStatus?.trusted === 'installed'}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

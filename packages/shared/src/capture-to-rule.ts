@@ -1,5 +1,12 @@
-import { v4 as uuidv4 } from 'uuid';
-import type { AutoResponderRule, CaptureEntry } from '@yanshuf/shared';
+import type { AutoResponderRule, CaptureEntry } from './types';
+
+function newId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -18,7 +25,11 @@ export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function captureToAutoResponderRule(entry: CaptureEntry, order: number): AutoResponderRule {
+export function captureToAutoResponderRule(
+  entry: CaptureEntry,
+  order: number,
+  id?: string,
+): AutoResponderRule {
   const responseHeaders: Record<string, string> = {};
   for (const [key, value] of Object.entries(entry.server.headers)) {
     if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
@@ -29,7 +40,7 @@ export function captureToAutoResponderRule(entry: CaptureEntry, order: number): 
   const bodyContent = entry.server.body?.preview ?? entry.server.body?.content ?? '';
 
   return {
-    id: uuidv4(),
+    id: id ?? newId(),
     name: entry.host,
     enabled: true,
     order,

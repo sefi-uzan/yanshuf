@@ -21,6 +21,19 @@ import { CaptureStore } from './proxy/capture-store';
 import { ProxyServer } from './proxy/server';
 import { JsonFileStore } from './storage/json-store';
 import { SystemProxyManager } from './system-proxy/macos';
+import { ensureMcpAuth, getMcpDataDir } from './mcp-api/auth';
+import { createMcpHandlers } from './mcp-api/create-handlers';
+import { McpApiServer } from './mcp-api/server';
+import { McpWaitQueue } from './mcp-api/wait-queue';
+import {
+  installIntegration,
+  verifyIntegration,
+  installMcpEntry,
+  installSkill,
+  installSessionEndHook,
+  type IntegrationClient,
+  type SkillInstallTarget,
+} from './mcp-api/integration';
 
 // Only one instance may own the proxy port; focus the existing window instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -41,6 +54,9 @@ let proxyServer: ProxyServer;
 let certManager: CertificateManager;
 let systemProxy: SystemProxyManager;
 let composerService: ComposerService;
+let mcpWaitQueue: McpWaitQueue;
+let mcpApiServer: McpApiServer | null = null;
+let mcpApiPort = 9473;
 
 function appIconPath(): string {
   const base = app.isPackaged
@@ -88,17 +104,20 @@ async function loadState(): Promise<void> {
   interceptEngine.setRules(interceptRules);
 
   breakpointManager = new BreakpointManager();
+  composerService = new ComposerService();
+  mcpWaitQueue = new McpWaitQueue();
+
   breakpointManager.on('hit', (snapshot: BreakpointSnapshot) => {
     broadcastCaptureUpdate(true);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.BREAKPOINT_HIT, snapshot);
     }
+    mcpWaitQueue.notifyBreakpoint(snapshot);
   });
 
   certManager = new CertificateManager(store.getCertsDir());
   await certManager.ensureCaGenerated();
   systemProxy = new SystemProxyManager();
-  composerService = new ComposerService();
 
   proxyServer = new ProxyServer({
     port: settings.port,
@@ -112,8 +131,10 @@ async function loadState(): Promise<void> {
     shouldCapture: buildShouldCapture(),
   });
 
-  proxyServer.on('capture', () => {
+  proxyServer.on('capture', (entry) => {
     broadcastCaptureUpdate();
+    const latest = entry ?? captureStore.list().at(-1);
+    if (latest) mcpWaitQueue.notifyCapture(latest);
   });
 
   if (settings.systemProxyEnabled) {
@@ -301,6 +322,30 @@ function buildMenu(): void {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+async function startMcpApi(userDataPath: string): Promise<void> {
+  const { token, config } = await ensureMcpAuth(userDataPath);
+  const handlers = createMcpHandlers({
+    settings,
+    saveSettings,
+    captureStore,
+    autoResponder,
+    interceptEngine,
+    breakpointManager,
+    proxyServer,
+    certManager,
+    systemProxy,
+    composerService,
+    store,
+    waitQueue: mcpWaitQueue,
+    mcpApiPort: config.port,
+    broadcastCaptureUpdate,
+    tagComposerCaptures,
+  });
+
+  mcpApiServer = new McpApiServer(token, handlers);
+  mcpApiPort = await mcpApiServer.start(config.port);
 }
 
 function registerIpc(): void {
@@ -493,6 +538,60 @@ function registerIpc(): void {
     await saveSettings();
     return settings;
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_INSTALL,
+    async (_e, client: IntegrationClient, target: SkillInstallTarget) =>
+      installIntegration(client, target),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_INSTALL_STEP,
+    async (
+      _e,
+      step: 'mcp' | 'skill' | 'hook',
+      client: IntegrationClient,
+      target?: SkillInstallTarget,
+    ) => {
+      if (step === 'mcp') return installMcpEntry(client);
+      if (step === 'skill') {
+        if (!target) throw new Error('Skill install target is required');
+        return installSkill(client, target);
+      }
+      return installSessionEndHook(client);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_VERIFY,
+    async (_e, client: IntegrationClient, target: SkillInstallTarget) => {
+      const certResult = await certManager.verifyTrust();
+      let apiReachable = false;
+      try {
+        const { token } = await ensureMcpAuth(app.getPath('userData'));
+        const res = await fetch(`http://127.0.0.1:${mcpApiPort}/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        apiReachable = res.ok;
+      } catch {
+        apiReachable = false;
+      }
+      return verifyIntegration(client, target, apiReachable, certResult.trusted);
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.DIALOG_PICK_DIRECTORY, async (_e, options?: { title?: string }) => {
+    const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    const dialogOptions: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+      title: options?.title ?? 'Select repository folder',
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+    if (result.canceled || !result.filePaths[0]) return null;
+    return result.filePaths[0];
+  });
 }
 
 const createWindow = async () => {
@@ -564,6 +663,7 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     await loadState();
     registerIpc();
+    await startMcpApi(app.getPath('userData'));
     buildMenu();
     applyAppIcon();
     applyContentSecurityPolicy();
@@ -586,6 +686,12 @@ app.on('window-all-closed', () => {
 let isShuttingDown = false;
 
 async function shutdownForQuit(): Promise<void> {
+  try {
+    await mcpApiServer?.stop();
+  } catch {
+    // ignore
+  }
+  mcpWaitQueue?.clear();
   try {
     await systemProxy?.disable();
   } catch {

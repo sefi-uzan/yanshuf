@@ -209,6 +209,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
   MENU_ACTION: 'menu:action',
+  MCP_INTEGRATION_INSTALL: 'mcp:integration-install',
+  MCP_INTEGRATION_VERIFY: 'mcp:integration-verify',
+  MCP_INTEGRATION_INSTALL_STEP: 'mcp:integration-install-step',
+  DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
 } as const;
 
 export type MenuAction =

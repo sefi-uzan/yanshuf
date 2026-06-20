@@ -7,3 +7,7 @@ export * from './url-filter';
 export * from './json';
 export * from './shortcuts';
 export * from './dnd';
+export * from './mcp-api';
+export * from './capture-search';
+export * from './capture-to-rule';
+export * from './capture-to-composer';

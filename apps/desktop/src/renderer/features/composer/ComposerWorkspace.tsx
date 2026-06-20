@@ -30,7 +30,7 @@ import {
 } from '@/components/workspace/method-styles';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { withCertGate } from '@/lib/cert-gate';
-import { captureToComposerRequest } from './captureToComposer';
+import { captureToComposerRequest } from '@yanshuf/shared';
 import { composedListLabel, MAX_COMPOSED_ENTRIES } from './composerUtils';
 import { notifyDeleted, notifyRemoved } from '@/lib/toast-actions';
 import { normalizeRequest, RequestEditor } from './RequestEditor';
