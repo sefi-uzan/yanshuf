@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, session, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import type {
@@ -6,14 +6,11 @@ import type {
   AutoResponderRule,
   ComposedEntry,
   ComposerCollection,
-  ComposerEnvironment,
   ComposerRequest,
-  ComposerSettings,
   MenuAction,
 } from '../shared/types';
-import { DEFAULT_COMPOSER_SETTINGS, DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS } from '../shared/types';
+import { DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS } from '../shared/types';
 import { shouldCaptureUrl } from '../shared/url-filter';
-import { substituteVariables } from '../shared/utils';
 import { AutoResponderEngine } from './auto-responder/engine';
 import { CertificateManager } from './cert/manager';
 import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
@@ -25,6 +22,12 @@ import { JsonFileStore } from './storage/json-store';
 import { SystemProxyManager } from './system-proxy/macos';
 
 if (started) {
+  app.quit();
+}
+
+// Only one instance may own the proxy port; focus the existing window instead.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
   app.quit();
 }
 
@@ -134,17 +137,36 @@ function getProxyStatus() {
   };
 }
 
-function broadcastCaptureUpdate(): void {
-  mainWindow?.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, captureStore.list());
+// Coalesce high-frequency capture events into at most one IPC send per window.
+const CAPTURE_BROADCAST_INTERVAL_MS = 120;
+let captureBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushCaptureUpdate(): void {
+  captureBroadcastTimer = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, captureStore.list());
+  }
+}
+
+function broadcastCaptureUpdate(immediate = false): void {
+  if (immediate) {
+    if (captureBroadcastTimer) {
+      clearTimeout(captureBroadcastTimer);
+      captureBroadcastTimer = null;
+    }
+    flushCaptureUpdate();
+    return;
+  }
+  if (captureBroadcastTimer) return;
+  captureBroadcastTimer = setTimeout(flushCaptureUpdate, CAPTURE_BROADCAST_INTERVAL_MS);
 }
 
 function tagComposerCaptures(
   beforeIds: Set<string>,
   req: ComposerRequest,
-  vars: Record<string, string>,
 ): void {
   const method = req.method.toUpperCase();
-  const url = substituteVariables(req.url, vars);
+  const url = req.url;
   let tagged = false;
 
   for (const entry of captureStore.list()) {
@@ -213,7 +235,7 @@ function buildMenu(): void {
       label: 'Proxy',
       submenu: [
         {
-          label: 'Start Capture',
+          label: 'Toggle Capture',
           accelerator: 'CmdOrCtrl+Shift+P',
           click: () => sendMenuAction('toggle-proxy'),
         },
@@ -240,6 +262,11 @@ function buildMenu(): void {
           label: 'Auto Responder',
           accelerator: 'CmdOrCtrl+R',
           click: () => sendMenuAction('open-rules'),
+        },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => sendMenuAction('open-settings'),
         },
         { type: 'separator' },
         { role: 'toggleDevTools' },
@@ -286,7 +313,7 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.CAPTURE_CLEAR, () => {
     captureStore.clear();
-    broadcastCaptureUpdate();
+    broadcastCaptureUpdate(true);
     return [];
   });
 
@@ -342,7 +369,7 @@ function registerIpc(): void {
     return rules;
   });
 
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_SEND, async (_e, req: ComposerRequest, vars: Record<string, string>) => {
+  ipcMain.handle(IPC_CHANNELS.COMPOSER_SEND, async (_e, req: ComposerRequest) => {
     try {
       if (!proxyServer.isRunning()) {
         await assertCertTrusted(certManager);
@@ -352,9 +379,9 @@ function registerIpc(): void {
       }
       const beforeIds = new Set(captureStore.list().map((entry) => entry.id));
       const caCertPath = path.join(certManager.getSslCaDir(), 'certs', 'ca.pem');
-      const response = await composerService.send(req, vars, { proxyPort: settings.port, caCertPath });
-      tagComposerCaptures(beforeIds, req, vars);
-      broadcastCaptureUpdate();
+      const response = await composerService.send(req, { proxyPort: settings.port, caCertPath });
+      tagComposerCaptures(beforeIds, req);
+      broadcastCaptureUpdate(true);
       return response;
     } catch (err) {
       rethrowCertIpcError(err);
@@ -373,16 +400,6 @@ function registerIpc(): void {
     store.write('composer/collections.json', collections),
   );
 
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_ENVIRONMENTS_GET, () =>
-    store.read<ComposerEnvironment[]>('composer/environments.json', [
-      { id: 'default', name: 'Default', variables: {} },
-    ]),
-  );
-
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_ENVIRONMENTS_SAVE, (_e, envs: ComposerEnvironment[]) =>
-    store.write('composer/environments.json', envs),
-  );
-
   ipcMain.handle(IPC_CHANNELS.COMPOSER_COMPOSED_GET, () =>
     store.read<ComposedEntry[]>('composer/composed.json', []),
   );
@@ -391,20 +408,15 @@ function registerIpc(): void {
     store.write('composer/composed.json', entries),
   );
 
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_SETTINGS_GET, () =>
-    store.read<ComposerSettings>('composer/settings.json', DEFAULT_COMPOSER_SETTINGS),
-  );
-
-  ipcMain.handle(IPC_CHANNELS.COMPOSER_SETTINGS_SAVE, (_e, settings: ComposerSettings) =>
-    store.write('composer/settings.json', settings),
-  );
-
   ipcMain.handle(IPC_CHANNELS.DIALOG_PICK_FILE, async (_e, options?: { title?: string }) => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-    const result = await dialog.showOpenDialog(win ?? undefined, {
+    const dialogOptions: Electron.OpenDialogOptions = {
       properties: ['openFile'],
       title: options?.title ?? 'Select file',
-    });
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
     if (result.canceled || !result.filePaths[0]) return null;
     return result.filePaths[0];
   });
@@ -445,6 +457,19 @@ const createWindow = async () => {
     },
   });
 
+  // Defense-in-depth: never let captured content open new windows or navigate away.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow?.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -452,19 +477,51 @@ const createWindow = async () => {
   }
 };
 
-app.whenReady().then(async () => {
-  await loadState();
-  registerIpc();
-  buildMenu();
-  applyAppIcon();
-  await createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow();
-    }
+// Apply a Content-Security-Policy to the packaged app. Skipped in dev so Vite HMR works.
+function applyContentSecurityPolicy(): void {
+  if (!app.isPackaged) return;
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+            "script-src 'self'; " +
+            "style-src 'self' 'unsafe-inline'; " +
+            "img-src 'self' data:; " +
+            "font-src 'self' data:; " +
+            "connect-src 'self'; " +
+            "object-src 'none'; " +
+            "frame-src 'none'",
+        ],
+      },
+    });
   });
+}
+
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
 });
+
+if (hasSingleInstanceLock) {
+  app.whenReady().then(async () => {
+    await loadState();
+    registerIpc();
+    buildMenu();
+    applyAppIcon();
+    applyContentSecurityPolicy();
+    await createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        void createWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -475,9 +532,17 @@ app.on('window-all-closed', () => {
 let isShuttingDown = false;
 
 async function shutdownForQuit(): Promise<void> {
-  await systemProxy.disable();
-  if (proxyServer?.isRunning()) {
-    await proxyServer.stop();
+  try {
+    await systemProxy?.disable();
+  } catch {
+    // Never block quit on proxy teardown.
+  }
+  try {
+    if (proxyServer?.isRunning()) {
+      await proxyServer.stop();
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -485,5 +550,5 @@ app.on('before-quit', (event) => {
   if (isShuttingDown) return;
   event.preventDefault();
   isShuttingDown = true;
-  void shutdownForQuit().then(() => app.quit());
+  void shutdownForQuit().finally(() => app.quit());
 });

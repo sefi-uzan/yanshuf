@@ -1,4 +1,4 @@
-import type { CaptureFilterMode, CaptureFilterSettings } from './types';
+import type { CaptureFilterSettings } from './types';
 
 export function parseFilterPatterns(urls: string): string[] {
   return urls

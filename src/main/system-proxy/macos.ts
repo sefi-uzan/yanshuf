@@ -13,16 +13,6 @@ async function listAllNetworkServices(): Promise<string[]> {
     .filter((s) => s && !s.startsWith('*'));
 }
 
-async function listNetworkServiceOrder(): Promise<string[]> {
-  const { stdout } = await execFileAsync('networksetup', ['-listnetworkserviceorder']);
-  const services: string[] = [];
-  for (const line of stdout.split('\n')) {
-    const match = line.match(/^\(\d+\)\s+(.+)$/);
-    if (match) services.push(match[1].trim());
-  }
-  return services;
-}
-
 async function getDefaultRouteDevice(): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync('route', ['-n', 'get', 'default']);
@@ -70,26 +60,62 @@ async function getNetworkServicesForProxy(): Promise<string[]> {
   return allServices.length > 0 ? allServices : primary ? [primary] : ['Wi-Fi'];
 }
 
-async function getProxySetting(service: string, type: string): Promise<string> {
-  const { stdout } = await execFileAsync('networksetup', [`-get${type}`, service]);
-  return stdout.trim();
+interface ProxySnapshot {
+  enabled: boolean;
+  server: string;
+  port: string;
 }
 
-async function setProxyForService(service: string, host: string, port: number, enabled: boolean): Promise<void> {
-  if (enabled) {
-    await execFileAsync('networksetup', ['-setwebproxy', service, host, String(port)]);
-    await execFileAsync('networksetup', ['-setsecurewebproxy', service, host, String(port)]);
+interface ServiceSnapshot {
+  web: ProxySnapshot;
+  secure: ProxySnapshot;
+}
+
+function parseProxySetting(stdout: string): ProxySnapshot {
+  const enabled = /^Enabled:\s*Yes/im.test(stdout);
+  const server = stdout.match(/^Server:\s*(.*)$/im)?.[1].trim() ?? '';
+  const port = stdout.match(/^Port:\s*(.*)$/im)?.[1].trim() ?? '';
+  return { enabled, server, port };
+}
+
+async function readServiceSnapshot(service: string): Promise<ServiceSnapshot> {
+  const [web, secure] = await Promise.all([
+    execFileAsync('networksetup', ['-getwebproxy', service]).then((r) => parseProxySetting(r.stdout)),
+    execFileAsync('networksetup', ['-getsecurewebproxy', service]).then((r) => parseProxySetting(r.stdout)),
+  ]);
+  return { web, secure };
+}
+
+async function enableProxyForService(service: string, host: string, port: number): Promise<void> {
+  await execFileAsync('networksetup', ['-setwebproxy', service, host, String(port)]);
+  await execFileAsync('networksetup', ['-setsecurewebproxy', service, host, String(port)]);
+  await execFileAsync('networksetup', ['-setwebproxystate', service, 'on']);
+  await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'on']);
+}
+
+async function restoreProxyForService(service: string, snapshot: ServiceSnapshot): Promise<void> {
+  if (snapshot.web.enabled && snapshot.web.server) {
+    await execFileAsync('networksetup', ['-setwebproxy', service, snapshot.web.server, snapshot.web.port || '0']);
     await execFileAsync('networksetup', ['-setwebproxystate', service, 'on']);
-    await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'on']);
   } else {
     await execFileAsync('networksetup', ['-setwebproxystate', service, 'off']);
+  }
+  if (snapshot.secure.enabled && snapshot.secure.server) {
+    await execFileAsync('networksetup', [
+      '-setsecurewebproxy',
+      service,
+      snapshot.secure.server,
+      snapshot.secure.port || '0',
+    ]);
+    await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'on']);
+  } else {
     await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'off']);
   }
 }
 
 export class SystemProxyManager {
   private state: SystemProxyState = { enabled: false };
-  private configuredServices: string[] = [];
+  private snapshots = new Map<string, ServiceSnapshot>();
 
   async enable(host: string, port: number): Promise<void> {
     if (process.platform !== 'darwin') {
@@ -97,22 +123,21 @@ export class SystemProxyManager {
     }
 
     const services = await getNetworkServicesForProxy();
-    this.configuredServices = services;
 
-    const primary = await getPrimaryNetworkService();
-    if (primary) {
-      const webProxy = await getProxySetting(primary, 'webproxy');
-      const secureProxy = await getProxySetting(primary, 'securewebproxy');
-      this.state = {
-        enabled: true,
-        previousSettings: { webProxy, secureWebProxy: secureProxy },
-      };
-    } else {
-      this.state = { enabled: true };
+    // Snapshot each service so disable() can restore any pre-existing proxy config.
+    this.snapshots.clear();
+    for (const service of services) {
+      try {
+        this.snapshots.set(service, await readServiceSnapshot(service));
+      } catch {
+        // If we can't read it, we just won't restore it (fall back to off).
+      }
     }
 
+    this.state = { enabled: true };
+
     for (const service of services) {
-      await setProxyForService(service, host, port, true);
+      await enableProxyForService(service, host, port);
     }
   }
 
@@ -120,13 +145,23 @@ export class SystemProxyManager {
     if (process.platform !== 'darwin' || !this.state.enabled) return;
 
     const services =
-      this.configuredServices.length > 0 ? this.configuredServices : await getNetworkServicesForProxy();
+      this.snapshots.size > 0 ? [...this.snapshots.keys()] : await getNetworkServicesForProxy();
 
     for (const service of services) {
-      await setProxyForService(service, '127.0.0.1', 8888, false);
+      const snapshot = this.snapshots.get(service);
+      try {
+        if (snapshot) {
+          await restoreProxyForService(service, snapshot);
+        } else {
+          await execFileAsync('networksetup', ['-setwebproxystate', service, 'off']);
+          await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'off']);
+        }
+      } catch {
+        // Best effort: keep restoring the remaining services.
+      }
     }
 
-    this.configuredServices = [];
+    this.snapshots.clear();
     this.state = { enabled: false };
   }
 
@@ -136,11 +171,5 @@ export class SystemProxyManager {
 
   getState(): SystemProxyState {
     return this.state;
-  }
-
-  restoreFromFlag(wasEnabled: boolean, host: string, port: number): void {
-    if (wasEnabled) {
-      void this.enable(host, port);
-    }
   }
 }

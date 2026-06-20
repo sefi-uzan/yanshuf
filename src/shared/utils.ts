@@ -9,27 +9,6 @@ export function headersToRecord(headers: Record<string, string | string[] | unde
   return result;
 }
 
-export function substituteVariables(
-  input: string,
-  variables: Record<string, string>,
-): string {
-  return input.replace(/\{\{([^}]+)\}\}/g, (_, key: string) => {
-    const trimmed = key.trim();
-    return variables[trimmed] ?? `{{${trimmed}}}`;
-  });
-}
-
-export function substituteObjectVariables<T extends Record<string, string>>(
-  obj: T,
-  variables: Record<string, string>,
-): T {
-  const result = { ...obj } as T;
-  for (const key of Object.keys(result)) {
-    result[key] = substituteVariables(result[key], variables) as T[Extract<keyof T, string>];
-  }
-  return result;
-}
-
 export function parseUrlParts(url: string, host?: string): { host: string; path: string } {
   try {
     const parsed = new URL(url.startsWith('http') ? url : `https://${host ?? 'localhost'}${url}`);
@@ -50,23 +29,32 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function bodyPreview(data: Buffer, maxLength = 512): BodyRef {
-  const size = data.length;
-  if (size === 0) return { size };
+/** Base64 previews aren't human-readable, so we never retain more than this. */
+const BINARY_PREVIEW_CAP = 256 * 1024;
+
+/**
+ * Build a body preview. `data` is the retained bytes (already capped upstream),
+ * `maxLength` how many to surface, and `totalSize` the true on-the-wire size.
+ */
+export function bodyPreview(data: Buffer, maxLength = 512, totalSize?: number): BodyRef {
+  const size = totalSize ?? data.length;
+  if (data.length === 0) return { size };
   const slice = data.subarray(0, maxLength);
-  const text = slice.toString('utf8');
-  const isBinary = /[\x00-\x08\x0E-\x1F]/.test(text);
+  // Only sniff the leading window for control chars; scanning megabytes is wasteful.
+  const head = slice.subarray(0, Math.min(slice.length, 4096)).toString('utf8');
+  // eslint-disable-next-line no-control-regex
+  const isBinary = /[\x00-\x08\x0E-\x1F]/.test(head);
   if (isBinary) {
     return {
       size,
       encoding: 'base64',
-      preview: data.subarray(0, Math.min(256, size)).toString('base64'),
+      preview: data.subarray(0, Math.min(BINARY_PREVIEW_CAP, data.length)).toString('base64'),
     };
   }
   return {
     size,
     encoding: 'utf8',
-    preview: text + (size > maxLength ? '…' : ''),
+    preview: slice.toString('utf8') + (size > slice.length ? '…' : ''),
   };
 }
 

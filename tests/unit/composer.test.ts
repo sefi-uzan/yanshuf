@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportCurl } from '../../src/shared/composer-curl';
 import { parseCurl } from '../../src/main/composer/service';
-import { substituteVariables } from '../../src/shared/utils';
 
 describe('cURL parsing', () => {
   it('parses a basic GET curl command', () => {
@@ -29,15 +28,5 @@ describe('cURL parsing', () => {
     expect(parsed.method).toBe('POST');
     expect(parsed.url).toBe(original.url);
     expect(parsed.body).toBe(original.body);
-  });
-});
-
-describe('variable substitution', () => {
-  it('replaces mustache variables', () => {
-    expect(substituteVariables('https://{{host}}/v1', { host: 'api.test' })).toBe('https://api.test/v1');
-  });
-
-  it('leaves unknown variables intact', () => {
-    expect(substituteVariables('{{missing}}', {})).toBe('{{missing}}');
   });
 });

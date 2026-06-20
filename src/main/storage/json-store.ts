@@ -28,7 +28,11 @@ export class JsonFileStore {
   }
 
   async write<T>(name: string, data: T): Promise<void> {
-    await fs.writeFile(this.filePath(name), JSON.stringify(data, null, 2), 'utf8');
+    // Write to a temp file then rename so a crash mid-write can't corrupt the file.
+    const target = this.filePath(name);
+    const tmp = `${target}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
+    await fs.rename(tmp, target);
   }
 
   getPath(name: string): string {

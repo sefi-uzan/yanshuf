@@ -12,6 +12,7 @@ export const SHORTCUTS = {
   autoResponder: { id: 'autoResponder', label: 'Auto Responder', keys: ['mod', 'R'] },
   clearSession: { id: 'clearSession', label: 'Clear captured requests', keys: ['mod', 'X'] },
   toggleCapture: { id: 'toggleCapture', label: 'Toggle capture', keys: ['mod', 'shift', 'P'] },
+  settings: { id: 'settings', label: 'Settings', keys: ['mod', 'S'] },
 } as const satisfies Record<string, ShortcutDefinition>;
 
 export function isMac(): boolean {
@@ -26,7 +27,6 @@ const KEY_SYMBOLS: Record<string, string> = {
 };
 
 export function formatShortcut(keys: ShortcutKey[]): string {
-  const modSymbol = isMac() ? KEY_SYMBOLS.mod : 'Ctrl+';
   return keys
     .map((key) => {
       const lower = key.toLowerCase();

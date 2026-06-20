@@ -3,7 +3,6 @@ import { fetch, ProxyAgent } from 'undici';
 import type { ComposerRequest, ComposerResponse } from '../../shared/types';
 import { methodSupportsBody } from '../../shared/http';
 import { YANSHUF_COMPOSER_HEADER } from '../../shared/composer';
-import { substituteObjectVariables, substituteVariables } from '../../shared/utils';
 
 export interface ComposerSendOptions {
   proxyPort: number;
@@ -83,12 +82,11 @@ function tokenizeCurl(input: string): string[] {
 export class ComposerService {
   async send(
     request: ComposerRequest,
-    variables: Record<string, string> = {},
     options?: ComposerSendOptions,
   ): Promise<ComposerResponse> {
-    const url = substituteVariables(request.url, variables);
-    const headers = substituteObjectVariables(request.headers, variables);
-    const body = request.body ? substituteVariables(request.body, variables) : undefined;
+    const url = request.url;
+    const headers = request.headers;
+    const body = request.body || undefined;
 
     const start = Date.now();
     let dispatcher: ProxyAgent | undefined;

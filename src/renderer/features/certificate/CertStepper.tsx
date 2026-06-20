@@ -45,7 +45,6 @@ export function CertStepper({ trusted, className }: CertStepperProps) {
 }
 
 function StepIndicator({
-  step,
   done,
   isCurrent,
   isReady,

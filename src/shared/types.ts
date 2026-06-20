@@ -56,7 +56,6 @@ export interface AutoResponderRule {
 
 export interface ComposerRequest {
   id?: string;
-  name?: string;
   method: string;
   url: string;
   headers: Record<string, string>;
@@ -76,28 +75,13 @@ export interface ComposerCollection {
   requests: ComposerRequest[];
 }
 
-export interface ComposerEnvironment {
-  id: string;
-  name: string;
-  variables: Record<string, string>;
-}
-
 export interface ComposedEntry {
   id: string;
   sentAt: number;
-  name: string;
   request: ComposerRequest;
   lastStatus?: number;
   lastDurationMs?: number;
 }
-
-export interface ComposerSettings {
-  activeEnvironmentId: string;
-}
-
-export const DEFAULT_COMPOSER_SETTINGS: ComposerSettings = {
-  activeEnvironmentId: 'default',
-};
 
 export type CaptureFilterMode = 'include' | 'exclude';
 
@@ -135,10 +119,6 @@ export interface ProxyStatus {
 
 export interface SystemProxyState {
   enabled: boolean;
-  previousSettings?: {
-    webProxy: string;
-    secureWebProxy: string;
-  };
 }
 
 export const DEFAULT_CAPTURE_FILTER: CaptureFilterSettings = {
@@ -181,12 +161,8 @@ export const IPC_CHANNELS = {
   COMPOSER_EXPORT_CURL: 'composer:export-curl',
   COMPOSER_COLLECTIONS_GET: 'composer:collections-get',
   COMPOSER_COLLECTIONS_SAVE: 'composer:collections-save',
-  COMPOSER_ENVIRONMENTS_GET: 'composer:environments-get',
-  COMPOSER_ENVIRONMENTS_SAVE: 'composer:environments-save',
   COMPOSER_COMPOSED_GET: 'composer:composed-get',
   COMPOSER_COMPOSED_SAVE: 'composer:composed-save',
-  COMPOSER_SETTINGS_GET: 'composer:settings-get',
-  COMPOSER_SETTINGS_SAVE: 'composer:settings-save',
   DIALOG_PICK_FILE: 'dialog:pick-file',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
@@ -200,4 +176,5 @@ export type MenuAction =
   | 'focus-search'
   | 'open-composer'
   | 'open-rules'
-  | 'install-certificate';
+  | 'install-certificate'
+  | 'open-settings';
