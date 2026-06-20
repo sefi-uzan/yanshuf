@@ -11,7 +11,7 @@ export default defineConfig({
     rollupOptions: {
       external: [
         'electron',
-        // http-mitm-proxy → ws optional peer deps (bufferutil) break when bundled
+        // Bundled by Vite breaks ws optional native peers; copied at pack time via scripts/copy-main-externals.ts
         'http-mitm-proxy',
         'ws',
       ],
