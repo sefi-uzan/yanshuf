@@ -17,7 +17,7 @@ Yanshuf is a local macOS proxy debugger. Use MCP tools prefixed with `yanshuf_`.
 2. If `certTrusted` is false → stop and ask the user to complete certificate setup in the Yanshuf app (Settings → Certificate).
 3. If capture is needed → **`yanshuf_toggle_capture`** (returns state after toggle; never toggle blind).
 4. Do work (search, get, send, rules, breakpoints).
-5. When the user says done → **`yanshuf_clear_session`**.
+5. When the user says done → **`yanshuf_cleanup_session`**.
 
 ## Core tools
 
@@ -25,7 +25,7 @@ Yanshuf is a local macOS proxy debugger. Use MCP tools prefixed with `yanshuf_`.
 |------|------|
 | `yanshuf_status` | Pre-flight; check capturing, port, entryCount, certTrusted |
 | `yanshuf_toggle_capture` | Start/stop capture (system proxy + MITM together) |
-| `yanshuf_clear_session` | Wipe captures when done |
+| `yanshuf_cleanup_session` | Clear captures and disable all rules when done |
 | `yanshuf_search_captures` | Find captures (max 100, latest first) — use before get |
 | `yanshuf_get_capture` | Full request/response for one ID |
 | `yanshuf_wait_for_capture` | Block until new traffic (after send or user action) |
@@ -80,8 +80,8 @@ yanshuf_save_intercept_rule(mode=breakpoint) → yanshuf_wait_for_breakpoint →
 
 ## Cleanup
 
-- Call `yanshuf_clear_session` when the user confirms debugging is done.
-- A sessionEnd hook clears captures when the chat closes (installed via Yanshuf Integrations).
+- Call `yanshuf_cleanup_session` when the user confirms debugging is done. This atomically clears captures and disables all mock/intercept rules.
+- A sessionEnd hook runs the same cleanup when the chat closes (installed via Yanshuf Integrations).
 
 ## Troubleshooting MCP connection
 

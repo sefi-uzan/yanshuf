@@ -102,10 +102,35 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
       return buildStatus(deps, certTrusted);
     },
 
-    async clearSession() {
+    async cleanupSession() {
       deps.captureStore.clear();
       deps.broadcastCaptureUpdate(true);
-      return { entryCount: 0 };
+
+      let disabledMockCount = 0;
+      const mockRules = deps.autoResponder.getRules();
+      const nextMock = mockRules.map((rule) => {
+        if (!rule.enabled) return rule;
+        disabledMockCount += 1;
+        return { ...rule, enabled: false };
+      });
+      if (disabledMockCount > 0) {
+        deps.autoResponder.setRules(nextMock);
+        await deps.store.write('rules.json', nextMock);
+      }
+
+      let disabledInterceptCount = 0;
+      const interceptRules = deps.interceptEngine.getRules();
+      const nextIntercept = interceptRules.map((rule) => {
+        if (!rule.enabled) return rule;
+        disabledInterceptCount += 1;
+        return { ...rule, enabled: false };
+      });
+      if (disabledInterceptCount > 0) {
+        deps.interceptEngine.setRules(nextIntercept);
+        await deps.store.write('intercept.json', nextIntercept);
+      }
+
+      return { entryCount: 0, disabledMockCount, disabledInterceptCount };
     },
 
     async searchCaptures(params: CaptureSearchParams) {

@@ -8,4 +8,4 @@
    - `yanshuf_continue_breakpoint(id, headers?, body?, status?)` — apply edits and forward
    - `yanshuf_abort_breakpoint(id)` — cancel (502 to client)
 6. Verify outcome via `yanshuf_search_captures` / `yanshuf_get_capture`.
-7. When done: `yanshuf_clear_session`.
+7. When done: `yanshuf_cleanup_session`.

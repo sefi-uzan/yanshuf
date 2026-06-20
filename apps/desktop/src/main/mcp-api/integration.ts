@@ -32,14 +32,14 @@ function homePath(...segments: string[]): string {
 export function bundledMcpPaths(): {
   mcpEntry: string;
   skillsSource: string;
-  clearSessionScript: string;
+  cleanupSessionScript: string;
 } {
   if (app.isPackaged) {
     const root = path.join(process.resourcesPath, 'mcp');
     return {
       mcpEntry: path.join(root, 'index.js'),
       skillsSource: path.join(root, 'skills', 'yanshuf'),
-      clearSessionScript: path.join(root, 'scripts', 'clear-session.sh'),
+      cleanupSessionScript: path.join(root, 'scripts', 'cleanup-session.sh'),
     };
   }
 
@@ -47,7 +47,7 @@ export function bundledMcpPaths(): {
   return {
     mcpEntry: path.join(monorepoRoot, 'apps', 'mcp', 'dist', 'index.js'),
     skillsSource: path.join(monorepoRoot, 'apps', 'mcp', 'skills', 'yanshuf'),
-    clearSessionScript: path.join(monorepoRoot, 'apps', 'mcp', 'scripts', 'clear-session.sh'),
+    cleanupSessionScript: path.join(monorepoRoot, 'apps', 'mcp', 'scripts', 'cleanup-session.sh'),
   };
 }
 
@@ -136,11 +136,11 @@ export async function installSkill(
 }
 
 export async function installSessionEndHook(client: IntegrationClient): Promise<IntegrationStepResult> {
-  const { clearSessionScript } = bundledMcpPaths();
+  const { cleanupSessionScript } = bundledMcpPaths();
   try {
-    await fs.access(clearSessionScript);
+    await fs.access(cleanupSessionScript);
   } catch {
-    return { ok: false, message: `Clear session script not found at ${clearSessionScript}` };
+    return { ok: false, message: `Cleanup session script not found at ${cleanupSessionScript}` };
   }
 
   if (client === 'cursor') {
@@ -149,10 +149,10 @@ export async function installSessionEndHook(client: IntegrationClient): Promise<
     const hooks = existing.hooks ?? {};
     const sessionEnd = Array.isArray(hooks.sessionEnd) ? [...hooks.sessionEnd] : [];
     const already = sessionEnd.some(
-      (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('clear-session'),
+      (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('cleanup-session'),
     );
     if (!already) {
-      sessionEnd.push({ command: clearSessionScript });
+      sessionEnd.push({ command: cleanupSessionScript });
     }
     hooks.sessionEnd = sessionEnd;
     existing.hooks = hooks;
@@ -166,10 +166,10 @@ export async function installSessionEndHook(client: IntegrationClient): Promise<
   const hooks = existing.hooks ?? {};
   const sessionEnd = Array.isArray(hooks.SessionEnd) ? [...hooks.SessionEnd] : [];
   const already = sessionEnd.some(
-    (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('clear-session'),
+    (h) => typeof h === 'object' && h && 'command' in h && String(h.command).includes('cleanup-session'),
   );
   if (!already) {
-    sessionEnd.push({ command: clearSessionScript });
+    sessionEnd.push({ command: cleanupSessionScript });
   }
   hooks.SessionEnd = sessionEnd;
   existing.hooks = hooks;
@@ -193,7 +193,7 @@ export async function verifyIntegration(
   apiReachable: boolean,
   certTrusted: boolean,
 ): Promise<IntegrationVerifyResult> {
-  const { mcpEntry, clearSessionScript } = bundledMcpPaths();
+  const { mcpEntry, cleanupSessionScript } = bundledMcpPaths();
   const details: string[] = [];
 
   let mcpConfigured = false;
@@ -229,22 +229,22 @@ export async function verifyIntegration(
       homePath('.cursor', 'hooks.json'),
     );
     hookInstalled = Boolean(
-      hooks?.hooks?.sessionEnd?.some((h) => h.command?.includes('clear-session')),
+      hooks?.hooks?.sessionEnd?.some((h) => h.command?.includes('cleanup-session')),
     );
   } else {
     const hooks = await readJsonFile<{ hooks?: { SessionEnd?: { command?: string }[] } }>(
       homePath('.claude', 'settings.json'),
     );
     hookInstalled = Boolean(
-      hooks?.hooks?.SessionEnd?.some((h) => h.command?.includes('clear-session')),
+      hooks?.hooks?.SessionEnd?.some((h) => h.command?.includes('cleanup-session')),
     );
   }
   if (!hookInstalled) details.push('SessionEnd hook not configured.');
 
   try {
-    await fs.access(clearSessionScript);
+    await fs.access(cleanupSessionScript);
   } catch {
-    details.push(`Clear session script missing at ${clearSessionScript}`);
+    details.push(`Cleanup session script missing at ${cleanupSessionScript}`);
   }
 
   if (!apiReachable) details.push('Yanshuf MCP HTTP API is not reachable.');
