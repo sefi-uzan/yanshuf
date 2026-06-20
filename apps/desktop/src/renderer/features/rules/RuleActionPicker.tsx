@@ -1,5 +1,5 @@
 import { cn } from '@yanshuf/ui/lib/utils';
-import { PauseCircle, PenLine, Zap } from 'lucide-react';
+import { ArrowRightLeft, PauseCircle, PenLine, Zap } from 'lucide-react';
 import type { RuleAction } from './rule-types';
 import { ruleActionDescription, ruleActionLabel } from './rule-types';
 
@@ -31,6 +31,13 @@ const ACTIONS: {
     activeRing: 'ring-orange-500/40',
     activeBg: 'bg-orange-500/[0.08] border-orange-500/30',
   },
+  {
+    value: 'map-remote',
+    icon: ArrowRightLeft,
+    accent: 'text-emerald-600 dark:text-emerald-400',
+    activeRing: 'ring-emerald-500/40',
+    activeBg: 'bg-emerald-500/[0.08] border-emerald-500/30',
+  },
 ];
 
 interface RuleActionPickerProps {
@@ -43,7 +50,7 @@ interface RuleActionPickerProps {
 export function RuleActionPicker({
   value,
   onChange,
-  options = ['mock', 'rewrite', 'breakpoint'],
+  options = ['mock', 'rewrite', 'breakpoint', 'map-remote'],
   compact,
 }: RuleActionPickerProps) {
   const visibleActions = ACTIONS.filter(({ value: action }) => options.includes(action));
@@ -63,6 +70,7 @@ export function RuleActionPicker({
           'grid gap-1.5 rounded-lg border bg-muted/20 p-1',
           visibleActions.length === 2 && 'grid-cols-2',
           visibleActions.length === 3 && 'grid-cols-3',
+          visibleActions.length >= 4 && 'grid-cols-2 sm:grid-cols-4',
         )}
         role="radiogroup"
         aria-label="Rule behavior"
@@ -108,5 +116,7 @@ export function ruleActionAccentClass(action: RuleAction): string {
       return 'border-l-sky-500';
     case 'breakpoint':
       return 'border-l-orange-500';
+    case 'map-remote':
+      return 'border-l-emerald-500';
   }
 }

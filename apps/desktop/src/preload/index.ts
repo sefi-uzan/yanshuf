@@ -11,6 +11,7 @@ import type {
   ComposerResponse,
   InterceptModifications,
   InterceptRule,
+  MapRemoteRule,
   IntegrationClient,
   IntegrationPrerequisites,
   IntegrationRegistry,
@@ -60,6 +61,10 @@ export interface YanshufAPI {
     onBreakpoint: (callback: (snapshot: BreakpointSnapshot) => void) => () => void;
     continueBreakpoint: (id: string, modifications?: InterceptModifications) => Promise<void>;
     abortBreakpoint: (id: string) => Promise<void>;
+  };
+  mapRemote: {
+    get: () => Promise<MapRemoteRule[]>;
+    save: (rules: MapRemoteRule[]) => Promise<MapRemoteRule[]>;
   };
   composer: {
     send: (req: ComposerRequest) => Promise<ComposerResponse>;
@@ -159,6 +164,10 @@ const api: YanshufAPI = {
     continueBreakpoint: (id, modifications) =>
       ipcRenderer.invoke(IPC_CHANNELS.BREAKPOINT_CONTINUE, id, modifications),
     abortBreakpoint: (id) => ipcRenderer.invoke(IPC_CHANNELS.BREAKPOINT_ABORT, id),
+  },
+  mapRemote: {
+    get: () => ipcRenderer.invoke(IPC_CHANNELS.MAP_REMOTE_GET),
+    save: (rules) => ipcRenderer.invoke(IPC_CHANNELS.MAP_REMOTE_SAVE, rules),
   },
   composer: {
     send: (req) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SEND, req),

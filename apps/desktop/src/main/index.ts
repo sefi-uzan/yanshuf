@@ -8,12 +8,14 @@ import type {
   ComposerRequest,
   InterceptModifications,
   InterceptRule,
+  MapRemoteRule,
   MenuAction,
 } from '@yanshuf/shared';
 import { DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS , shouldCaptureUrl , exportCurl } from '@yanshuf/shared';
 import { AutoResponderEngine } from './auto-responder/engine';
 import { BreakpointManager } from './intercept/breakpoint-manager';
 import { InterceptEngine } from './intercept/engine';
+import { MapRemoteEngine } from './map-remote/engine';
 import { CertificateManager } from './cert/manager';
 import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
@@ -57,6 +59,7 @@ let settings: AppSettings;
 let captureStore: CaptureStore;
 let autoResponder: AutoResponderEngine;
 let interceptEngine: InterceptEngine;
+let mapRemoteEngine: MapRemoteEngine;
 let breakpointManager: BreakpointManager;
 let proxyServer: ProxyServer;
 let certManager: CertificateManager;
@@ -125,6 +128,10 @@ async function loadState(): Promise<void> {
   const interceptRules = await store.read<InterceptRule[]>('intercept.json', []);
   interceptEngine.setRules(interceptRules);
 
+  mapRemoteEngine = new MapRemoteEngine();
+  const mapRemoteRules = await store.read<MapRemoteRule[]>('map-remote.json', []);
+  mapRemoteEngine.setRules(mapRemoteRules);
+
   breakpointManager = new BreakpointManager();
   composerService = new ComposerService();
   mcpWaitQueue = new McpWaitQueue();
@@ -149,6 +156,7 @@ async function loadState(): Promise<void> {
     captureStore,
     autoResponder,
     interceptEngine,
+    mapRemoteEngine,
     breakpointManager,
     shouldCapture: buildShouldCapture(),
   });
@@ -354,6 +362,7 @@ async function startMcpApi(userDataPath: string): Promise<void> {
     captureStore,
     autoResponder,
     interceptEngine,
+    mapRemoteEngine,
     breakpointManager,
     proxyServer,
     certManager,
@@ -466,6 +475,14 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.INTERCEPT_SAVE, async (_e, rules: InterceptRule[]) => {
     interceptEngine.setRules(rules);
     await store.write('intercept.json', rules);
+    return rules;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MAP_REMOTE_GET, () => mapRemoteEngine.getRules());
+
+  ipcMain.handle(IPC_CHANNELS.MAP_REMOTE_SAVE, async (_e, rules: MapRemoteRule[]) => {
+    mapRemoteEngine.setRules(rules);
+    await store.write('map-remote.json', rules);
     return rules;
   });
 

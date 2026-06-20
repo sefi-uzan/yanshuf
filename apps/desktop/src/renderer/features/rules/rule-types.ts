@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { AutoResponderRule, InterceptMode, InterceptRule } from '@yanshuf/shared';
+import type { AutoResponderRule, InterceptMode, InterceptRule, MapRemoteRule } from '@yanshuf/shared';
 
-export type RuleAction = 'mock' | 'rewrite' | 'breakpoint';
-export type RuleKind = 'mock' | 'intercept';
-export type RuleFilter = 'all' | RuleKind;
+export type RuleAction = 'mock' | 'rewrite' | 'breakpoint' | 'map-remote';
+export type RuleKind = 'mock' | 'intercept' | 'mapRemote';
+export type RuleFilter = 'all' | RuleAction;
 
 export interface SelectedRuleRef {
   kind: RuleKind;
@@ -22,6 +22,8 @@ export function ruleActionLabel(action: RuleAction): string {
       return 'Rewrite';
     case 'breakpoint':
       return 'Breakpoint';
+    case 'map-remote':
+      return 'Map Remote';
   }
 }
 
@@ -33,6 +35,8 @@ export function ruleActionDescription(action: RuleAction): string {
       return 'Modify live requests or responses, then forward to the real backend.';
     case 'breakpoint':
       return 'Pause matching traffic so you can inspect, edit, and continue.';
+    case 'map-remote':
+      return 'Forward matching requests to a different host while preserving path and query.';
   }
 }
 
@@ -66,6 +70,17 @@ export function emptyInterceptRule(order: number, mode: InterceptMode = 'rewrite
   };
 }
 
+export function emptyMapRemoteRule(order: number): MapRemoteRule {
+  return {
+    id: uuidv4(),
+    name: 'New Map Remote',
+    enabled: true,
+    order,
+    match: { urlRegex: '' },
+    mapTo: { host: '' },
+  };
+}
+
 export function reorderMockRules(
   rules: AutoResponderRule[],
   fromId: string,
@@ -86,6 +101,21 @@ export function reorderInterceptRules(
   fromId: string,
   toId: string,
 ): InterceptRule[] {
+  const fromIdx = rules.findIndex((rule) => rule.id === fromId);
+  const toIdx = rules.findIndex((rule) => rule.id === toId);
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return rules;
+
+  const next = [...rules];
+  const [moved] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, moved);
+  return next.map((rule, index) => ({ ...rule, order: index }));
+}
+
+export function reorderMapRemoteRules(
+  rules: MapRemoteRule[],
+  fromId: string,
+  toId: string,
+): MapRemoteRule[] {
   const fromIdx = rules.findIndex((rule) => rule.id === fromId);
   const toIdx = rules.findIndex((rule) => rule.id === toId);
   if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return rules;

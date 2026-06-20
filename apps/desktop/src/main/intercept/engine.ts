@@ -1,4 +1,5 @@
 import type { InterceptPhase, InterceptRule } from '@yanshuf/shared';
+import { matchesUrlRegex } from '@yanshuf/shared';
 
 export class InterceptEngine {
   private rules: InterceptRule[] = [];
@@ -28,13 +29,7 @@ export class InterceptEngine {
   }
 
   private matchesUrl(rule: InterceptRule, url: string): boolean {
-    const pattern = rule.match.urlRegex?.trim();
-    if (!pattern) return false;
-    try {
-      return new RegExp(pattern, 'i').test(url);
-    } catch {
-      return false;
-    }
+    return matchesUrlRegex(rule.match.urlRegex, url);
   }
 }
 

@@ -190,6 +190,43 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
   );
 
   server.registerTool(
+    'yanshuf_list_map_remote_rules',
+    {
+      description: 'List Map Remote rules that forward matching requests to another host.',
+      inputSchema: {},
+    },
+    async () => textResult(await client.listMapRemoteRules()),
+  );
+
+  server.registerTool(
+    'yanshuf_save_map_remote_rule',
+    {
+      description:
+        'Create or update a Map Remote rule. Optionally pass captureId to bootstrap match from a capture.',
+      inputSchema: {
+        id: z.string().optional(),
+        captureId: z.string().optional(),
+        name: z.string().optional(),
+        enabled: z.boolean().optional(),
+        urlRegex: z.string().optional(),
+        host: z.string().optional(),
+        port: z.number().optional(),
+        protocol: z.enum(['http', 'https']).optional(),
+      },
+    },
+    async (args) => textResult(await client.saveMapRemoteRule(args)),
+  );
+
+  server.registerTool(
+    'yanshuf_delete_map_remote_rule',
+    {
+      description: 'Delete a Map Remote rule by ID.',
+      inputSchema: { id: z.string() },
+    },
+    async ({ id }) => textResult(await client.deleteMapRemoteRule(id)),
+  );
+
+  server.registerTool(
     'yanshuf_list_pending_breakpoints',
     {
       description: 'List captures awaiting breakpoint continue/abort.',

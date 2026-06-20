@@ -17,6 +17,7 @@ export default function App() {
   const [detailMode, setDetailMode] = useState<DetailMode>('capture');
   const [composerLoadEntryId, setComposerLoadEntryId] = useState<string | null>(null);
   const [rulesLoadEntryId, setRulesLoadEntryId] = useState<string | null>(null);
+  const [rulesLoadEntryKind, setRulesLoadEntryKind] = useState<'mock' | 'mapRemote'>('mock');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [focusAiUpdates, setFocusAiUpdates] = useState(false);
@@ -231,12 +232,22 @@ export default function App() {
           composerLoadEntryId={composerLoadEntryId}
           onComposerLoadHandled={() => setComposerLoadEntryId(null)}
           rulesLoadEntryId={rulesLoadEntryId}
-          onRulesLoadHandled={() => setRulesLoadEntryId(null)}
+          rulesLoadEntryKind={rulesLoadEntryKind}
+          onRulesLoadHandled={() => {
+            setRulesLoadEntryId(null);
+            setRulesLoadEntryKind('mock');
+          }}
           onAddToComposer={(entryId) => {
             setComposerLoadEntryId(entryId);
             setDetailMode('composer');
           }}
           onCreateRule={(entryId) => {
+            setRulesLoadEntryKind('mock');
+            setRulesLoadEntryId(entryId);
+            setDetailMode('rules');
+          }}
+          onCreateMapRemoteRule={(entryId) => {
+            setRulesLoadEntryKind('mapRemote');
             setRulesLoadEntryId(entryId);
             setDetailMode('rules');
           }}

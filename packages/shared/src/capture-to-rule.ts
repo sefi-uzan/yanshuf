@@ -1,4 +1,4 @@
-import type { AutoResponderRule, CaptureEntry } from './types';
+import type { AutoResponderRule, CaptureEntry, MapRemoteRule } from './types';
 
 function newId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -52,6 +52,25 @@ export function captureToAutoResponderRule(
       headers: responseHeaders,
       body: bodyContent ? { type: 'inline', content: bodyContent } : undefined,
       delayMs: 0,
+    },
+  };
+}
+
+export function captureToMapRemoteRule(
+  entry: CaptureEntry,
+  order: number,
+  id?: string,
+): MapRemoteRule {
+  return {
+    id: id ?? newId(),
+    name: `${entry.host} → …`,
+    enabled: true,
+    order,
+    match: {
+      urlRegex: escapeRegex(entry.host),
+    },
+    mapTo: {
+      host: '',
     },
   };
 }

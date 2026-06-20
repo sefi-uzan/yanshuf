@@ -82,7 +82,7 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
       >
         <Search className="h-3.5 w-3.5 shrink-0" />
         <span>Search</span>
-        <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" reserveSpace />
+        <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" />
       </div>
 
       {/* In-flow ghost keeps the dock width stable while search overlays left */}
@@ -95,7 +95,7 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
         >
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span>Search</span>
-          <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" reserveSpace />
+          <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" />
         </button>
       </div>
 

@@ -1,10 +1,13 @@
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
 import type { ServerResponse } from 'node:http';
 import { Proxy } from 'http-mitm-proxy';
 import { v4 as uuidv4 } from 'uuid';
 import type { AutoResponderEngine } from '../auto-responder/engine';
 import type { BreakpointManager } from '../intercept/breakpoint-manager';
+import type { MapRemoteEngine } from '../map-remote/engine';
 import {
   installBodyReplacer,
   InterceptEngine,
@@ -34,6 +37,7 @@ export interface ProxyServerOptions {
   captureStore: CaptureStore;
   autoResponder: AutoResponderEngine;
   interceptEngine: InterceptEngine;
+  mapRemoteEngine: MapRemoteEngine;
   breakpointManager: BreakpointManager;
   shouldCapture?: (url: string) => boolean;
 }
@@ -116,6 +120,30 @@ function applyResponseRewrite(ctx: ProxyContext, rule: InterceptRule): void {
   }
   if (rule.response?.body !== undefined && rule.response.body !== '') {
     installBodyReplacer((handler) => ctx.onResponseData(handler), rule.response.body);
+  }
+}
+
+function applyMapRemote(ctx: ProxyContext, mappedUrl: string): void {
+  const parsed = new URL(mappedUrl);
+  const defaultPort = parsed.protocol === 'https:' ? 443 : 80;
+  const port = parsed.port ? Number(parsed.port) : defaultPort;
+  const hostHeader = parsed.port ? `${parsed.hostname}:${port}` : parsed.hostname;
+
+  mergeHeaderRecord(ctx.clientToProxyRequest.headers, { host: hostHeader });
+
+  const opts = ctx.proxyToServerRequestOptions;
+  if (opts) {
+    opts.host = parsed.hostname;
+    opts.port = port;
+    opts.path = `${parsed.pathname}${parsed.search}`;
+    opts.headers.host = hostHeader;
+    if (parsed.protocol === 'http:') {
+      ctx.isSSL = false;
+      opts.agent = http.globalAgent;
+    } else if (parsed.protocol === 'https:') {
+      ctx.isSSL = true;
+      opts.agent = https.globalAgent;
+    }
   }
 }
 
@@ -270,6 +298,8 @@ export class ProxyServer extends EventEmitter {
           return;
         }
 
+        this.applyMapRemoteIfNeeded(ctx, pending, info.fullUrl);
+
         callback();
       });
 
@@ -391,6 +421,8 @@ export class ProxyServer extends EventEmitter {
           }
           cb();
         });
+
+        this.applyMapRemoteIfNeeded(ctx, pending, input.url);
 
         callback();
       })().catch((err) => {
@@ -537,6 +569,19 @@ export class ProxyServer extends EventEmitter {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
     }
+  }
+
+  private applyMapRemoteIfNeeded(
+    ctx: ProxyContext,
+    pending: PendingCapture,
+    originalUrl: string,
+  ): void {
+    const mapRule = this.options.mapRemoteEngine.findMatch(originalUrl);
+    if (!mapRule) return;
+    const mappedUrl = this.options.mapRemoteEngine.applyMapping(originalUrl, mapRule);
+    applyMapRemote(ctx, mappedUrl);
+    pending.matchedMapRemoteRuleId = mapRule.id;
+    pending.mappedToUrl = mappedUrl;
   }
 
   private async respondWithRule(

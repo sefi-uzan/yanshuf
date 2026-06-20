@@ -10,6 +10,8 @@ import type {
   ComposerResponse,
   InterceptModifications,
   InterceptRule,
+  MapRemoteRule,
+  MapRemoteRuleSaveBody,
   MockRuleSaveBody,
   InterceptRuleSaveBody,
   ComposerSendBody,
@@ -21,12 +23,14 @@ import type {
 } from '@yanshuf/shared';
 import {
   captureToAutoResponderRule,
+  captureToMapRemoteRule,
   captureToComposerRequest,
   searchCaptures as filterCaptures,
 } from '@yanshuf/shared';
 import type { AutoResponderEngine } from '../auto-responder/engine';
 import type { BreakpointManager } from '../intercept/breakpoint-manager';
 import type { InterceptEngine } from '../intercept/engine';
+import type { MapRemoteEngine } from '../map-remote/engine';
 import type { CertificateManager } from '../cert/manager';
 import type { ComposerService } from '../composer/service';
 import type { CaptureStore } from '../proxy/capture-store';
@@ -42,6 +46,7 @@ export interface McpHandlerDeps {
   captureStore: CaptureStore;
   autoResponder: AutoResponderEngine;
   interceptEngine: InterceptEngine;
+  mapRemoteEngine: MapRemoteEngine;
   breakpointManager: BreakpointManager;
   proxyServer: ProxyServer;
   certManager: CertificateManager;
@@ -130,7 +135,19 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         await deps.store.write('intercept.json', nextIntercept);
       }
 
-      return { entryCount: 0, disabledMockCount, disabledInterceptCount };
+      let disabledMapRemoteCount = 0;
+      const mapRemoteRules = deps.mapRemoteEngine.getRules();
+      const nextMapRemote = mapRemoteRules.map((rule) => {
+        if (!rule.enabled) return rule;
+        disabledMapRemoteCount += 1;
+        return { ...rule, enabled: false };
+      });
+      if (disabledMapRemoteCount > 0) {
+        deps.mapRemoteEngine.setRules(nextMapRemote);
+        await deps.store.write('map-remote.json', nextMapRemote);
+      }
+
+      return { entryCount: 0, disabledMockCount, disabledInterceptCount, disabledMapRemoteCount };
     },
 
     async searchCaptures(params: CaptureSearchParams) {
@@ -315,6 +332,59 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
       const rules = deps.interceptEngine.getRules().filter((r) => r.id !== id);
       deps.interceptEngine.setRules(rules);
       await deps.store.write('intercept.json', rules);
+    },
+
+    async listMapRemoteRules() {
+      return deps.mapRemoteEngine.getRules();
+    },
+
+    async saveMapRemoteRule(body: MapRemoteRuleSaveBody) {
+      const rules = deps.mapRemoteEngine.getRules();
+      let rule: MapRemoteRule;
+
+      if (body.captureId) {
+        const entry = deps.captureStore.get(body.captureId);
+        if (!entry) throw new Error(`Capture not found: ${body.captureId}`);
+        rule = captureToMapRemoteRule(entry, rules.length, body.id);
+      } else {
+        if (!body.urlRegex) throw new Error('urlRegex is required when captureId is not provided');
+        if (!body.host) throw new Error('host is required when captureId is not provided');
+        rule = {
+          id: body.id ?? uuidv4(),
+          name: body.name ?? 'Map Remote rule',
+          enabled: body.enabled ?? true,
+          order: rules.length,
+          match: { urlRegex: body.urlRegex },
+          mapTo: {
+            host: body.host,
+            port: body.port,
+            protocol: body.protocol,
+          },
+        };
+      }
+
+      if (body.name !== undefined) rule.name = body.name;
+      if (body.enabled !== undefined) rule.enabled = body.enabled;
+      if (body.urlRegex !== undefined) rule.match.urlRegex = body.urlRegex;
+      if (body.host !== undefined) rule.mapTo.host = body.host;
+      if (body.port !== undefined) rule.mapTo.port = body.port;
+      if (body.protocol !== undefined) rule.mapTo.protocol = body.protocol;
+
+      const existingIdx = rules.findIndex((r) => r.id === rule.id);
+      const next =
+        existingIdx >= 0
+          ? rules.map((r, i) => (i === existingIdx ? { ...rule, order: r.order } : r))
+          : [...rules, rule];
+
+      deps.mapRemoteEngine.setRules(next);
+      await deps.store.write('map-remote.json', next);
+      return existingIdx >= 0 ? next[existingIdx]! : rule;
+    },
+
+    async deleteMapRemoteRule(id: string) {
+      const rules = deps.mapRemoteEngine.getRules().filter((r) => r.id !== id);
+      deps.mapRemoteEngine.setRules(rules);
+      await deps.store.write('map-remote.json', rules);
     },
 
     async listPendingBreakpoints() {

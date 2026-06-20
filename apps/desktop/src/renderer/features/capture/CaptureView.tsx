@@ -23,9 +23,11 @@ interface CaptureViewProps {
   composerLoadEntryId?: string | null;
   onComposerLoadHandled?: () => void;
   rulesLoadEntryId?: string | null;
+  rulesLoadEntryKind?: 'mock' | 'mapRemote';
   onRulesLoadHandled?: () => void;
   onAddToComposer?: (entryId: string) => void;
   onCreateRule?: (entryId: string) => void;
+  onCreateMapRemoteRule?: (entryId: string) => void;
   onCaptureEntrySelect?: () => void;
   certStatus?: CertStatus | null;
   onOpenCertificateSettings?: () => void;
@@ -40,9 +42,11 @@ export function CaptureView({
   composerLoadEntryId,
   onComposerLoadHandled,
   rulesLoadEntryId,
+  rulesLoadEntryKind,
   onRulesLoadHandled,
   onAddToComposer,
   onCreateRule,
+  onCreateMapRemoteRule,
   onCaptureEntrySelect,
   certStatus,
   onOpenCertificateSettings,
@@ -151,6 +155,7 @@ export function CaptureView({
             draggable={detailMode !== 'capture'}
             onAddToComposer={onAddToComposer}
             onCreateRule={onCreateRule}
+            onCreateMapRemoteRule={onCreateMapRemoteRule}
           />
         </Panel>
         <Separator className="w-1 bg-border transition-colors hover:bg-primary/30" />
@@ -178,6 +183,7 @@ export function CaptureView({
           {detailMode === 'rules' && (
             <AutoResponderWorkspace
               loadFromEntryId={rulesLoadEntryId}
+              loadFromEntryKind={rulesLoadEntryKind}
               onLoadHandled={onRulesLoadHandled}
             />
           )}
