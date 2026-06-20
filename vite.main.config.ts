@@ -9,7 +9,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['electron', 'http-mitm-proxy', 'node-forge', 'undici', 'electron-squirrel-startup'],
+      external: ['electron'],
     },
   },
 });

@@ -1,6 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, session, shell } from 'electron';
 import path from 'node:path';
-import started from 'electron-squirrel-startup';
 import type {
   AppSettings,
   AutoResponderRule,
@@ -20,10 +19,6 @@ import { CaptureStore } from './proxy/capture-store';
 import { ProxyServer } from './proxy/server';
 import { JsonFileStore } from './storage/json-store';
 import { SystemProxyManager } from './system-proxy/macos';
-
-if (started) {
-  app.quit();
-}
 
 // Only one instance may own the proxy port; focus the existing window instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -103,16 +98,6 @@ async function loadState(): Promise<void> {
     broadcastCaptureUpdate();
   });
 
-  if (settings.proxyRunning) {
-    try {
-      await assertCertTrusted(certManager);
-      await proxyServer.start();
-    } catch {
-      settings.proxyRunning = false;
-      await saveSettings();
-    }
-  }
-
   if (settings.systemProxyEnabled) {
     try {
       await assertCertTrusted(certManager);
@@ -120,6 +105,21 @@ async function loadState(): Promise<void> {
     } catch {
       settings.systemProxyEnabled = false;
       await saveSettings();
+    }
+  }
+
+  if (settings.proxyRunning) {
+    if (!systemProxy.isEnabled()) {
+      settings.proxyRunning = false;
+      await saveSettings();
+    } else {
+      try {
+        await assertCertTrusted(certManager);
+        await proxyServer.start();
+      } catch {
+        settings.proxyRunning = false;
+        await saveSettings();
+      }
     }
   }
 }
@@ -288,6 +288,9 @@ function buildMenu(): void {
 function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.PROXY_START, async () => {
     try {
+      if (!systemProxy.isEnabled()) {
+        throw new Error('Enable System Proxy before starting capture');
+      }
       await assertCertTrusted(certManager);
       await proxyServer.start();
       settings.proxyRunning = true;
@@ -357,6 +360,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_DISABLE, async () => {
     await systemProxy.disable();
     settings.systemProxyEnabled = false;
+    if (proxyServer.isRunning()) {
+      await proxyServer.stop();
+      settings.proxyRunning = false;
+    }
     await saveSettings();
     return getProxyStatus();
   });

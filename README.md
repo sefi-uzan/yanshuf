@@ -24,30 +24,31 @@ Define ordered regex rules that return custom responses (inline body, local file
 
 ### Composer
 
-Build HTTP requests, import/export cURL, and save collections.
+Build HTTP requests, import/export cURL, and keep a send history of recent requests.
 
 ## Development
 
 ### Prerequisites
 
 - Node.js 20+
+- pnpm 10+ (`corepack enable` or `npm install -g pnpm`)
 - macOS (system proxy integration is macOS-only)
 
 ### Setup
 
 ```bash
-npm install
-npm start
+pnpm install
+pnpm start
 ```
 
 ### Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Run Electron in development mode |
-| `npm test` | Run unit tests (Vitest) |
-| `npm run test:e2e` | Run Playwright E2E tests |
-| `npm run make` | Build a distributable (.dmg on macOS) |
+| `pnpm start` | Run Electron in development mode |
+| `pnpm test` | Run unit tests (Vitest) |
+| `pnpm test:e2e` | Run Playwright E2E tests |
+| `pnpm make` | Build a distributable (.dmg on macOS) |
 
 ### Project structure
 
@@ -64,7 +65,7 @@ src/
 Build a local `.dmg`:
 
 ```bash
-npm run make
+pnpm make
 ```
 
 The `.dmg` is produced in `out/make/`. It targets **Apple Silicon (arm64)** only — it will not run on Intel Macs.

@@ -9,7 +9,7 @@ import { Logo } from '@/components/Logo';
 import { ShortcutHint } from '@/components/shortcut-hints';
 import { cn } from '@/lib/utils';
 import { withCertGate } from '@/lib/cert-gate';
-import { clearCapturedRequests } from '@/lib/toast-actions';
+import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
 import { Settings, Zap, PenLine, Search } from 'lucide-react';
 import type { CertStatus } from '../shared/types';
 import { SHORTCUTS } from '../shared/shortcuts';
@@ -102,8 +102,14 @@ export default function App() {
         const status = await window.yanshuf.proxy.status();
         if (status.running) {
           await window.yanshuf.proxy.stop();
+        } else if (!status.systemProxyEnabled) {
+          notifyActionFailed('start capture', new Error('Enable System Proxy first'));
         } else {
-          await withCertGate(() => window.yanshuf.proxy.start(), openCertOnboarding);
+          try {
+            await withCertGate(() => window.yanshuf.proxy.start(), openCertOnboarding);
+          } catch (err) {
+            notifyActionFailed('start capture', err);
+          }
         }
         setProxyStatusNonce((n) => n + 1);
         break;
