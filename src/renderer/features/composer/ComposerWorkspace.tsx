@@ -32,10 +32,12 @@ import {
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
 import { cn } from '@/lib/utils';
+import { withCertGate } from '@/lib/cert-gate';
 import { captureToComposerRequest } from './captureToComposer';
 import { composedListLabel, MAX_COMPOSED_ENTRIES, requestHostname } from './composerUtils';
+import { notifyDeleted } from '@/lib/toast-actions';
 import { EnvironmentManagerDialog } from './EnvironmentManagerDialog';
-import { MoreVertical, Plus, Settings } from 'lucide-react';
+import { MoreVertical, PenLine, Plus, Settings } from 'lucide-react';
 
 const emptyRequest: ComposerRequest = {
   method: 'GET',
@@ -54,10 +56,10 @@ function normalizeRequest(request: ComposerRequest): ComposerRequest {
 interface ComposerWorkspaceProps {
   loadFromEntryId?: string | null;
   onLoadHandled?: () => void;
-  onSent?: () => void;
+  onCertBlocked?: () => void;
 }
 
-export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: ComposerWorkspaceProps) {
+export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onCertBlocked }: ComposerWorkspaceProps) {
   const [request, setRequest] = useState<ComposerRequest>(emptyRequest);
   const [environments, setEnvironments] = useState<ComposerEnvironment[]>([]);
   const [composed, setComposed] = useState<ComposedEntry[]>([]);
@@ -134,8 +136,12 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: Co
   };
 
   const deleteComposed = (id: string) => {
+    const removed = composed.find((entry) => entry.id === id);
     const next = composed.filter((entry) => entry.id !== id);
     void saveComposed(next);
+    if (removed) {
+      notifyDeleted(composedListLabel(removed.request));
+    }
     if (selectedComposedId === id) {
       setSelectedComposedId(null);
       setRequest(emptyRequest);
@@ -145,7 +151,11 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: Co
   const send = async () => {
     setLoading(true);
     try {
-      const response = await window.yanshuf.composer.send(normalizeRequest(request), variables);
+      const response = await withCertGate(
+        () => window.yanshuf.composer.send(normalizeRequest(request), variables),
+        () => onCertBlocked?.(),
+      );
+      if (!response) return;
       const entry: ComposedEntry = {
         id: uuidv4(),
         sentAt: Date.now(),
@@ -157,7 +167,6 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: Co
       const next = [entry, ...composed].slice(0, MAX_COMPOSED_ENTRIES);
       await saveComposed(next);
       setSelectedComposedId(entry.id);
-      onSent?.();
     } finally {
       setLoading(false);
     }
@@ -212,7 +221,10 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: Co
                   composed.map((entry) => (
                     <div
                       key={entry.id}
-                      className={`group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50 ${selectedComposedId === entry.id ? 'bg-accent' : ''}`}
+                      className={cn(
+                        'group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50',
+                        selectedComposedId === entry.id && 'bg-accent',
+                      )}
                     >
                       <button
                         type="button"
@@ -225,6 +237,7 @@ export function ComposerWorkspace({ loadFromEntryId, onLoadHandled, onSent }: Co
                         >
                           {entry.request.method}
                         </Badge>
+                        <PenLine className="h-3 w-3 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate">{composedListLabel(entry.request)}</span>
                         {entry.lastStatus !== undefined && (
                           <Badge

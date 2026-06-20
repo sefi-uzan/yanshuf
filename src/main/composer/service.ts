@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { fetch, ProxyAgent } from 'undici';
 import type { ComposerRequest, ComposerResponse } from '../../shared/types';
 import { methodSupportsBody } from '../../shared/http';
+import { YANSHUF_COMPOSER_HEADER } from '../../shared/composer';
 import { substituteObjectVariables, substituteVariables } from '../../shared/utils';
 
 export interface ComposerSendOptions {
@@ -93,7 +94,9 @@ export class ComposerService {
     let dispatcher: ProxyAgent | undefined;
     const fetchOptions: Parameters<typeof fetch>[1] = {
       method: request.method,
-      headers,
+      headers: options
+        ? { ...headers, [YANSHUF_COMPOSER_HEADER]: '1' }
+        : headers,
       body: body && methodSupportsBody(request.method) ? body : undefined,
     };
 

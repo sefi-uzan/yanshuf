@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { CaptureEntrySummary, ProxyStatus } from '../../../shared/types';
+import type { CaptureEntry, CaptureEntrySummary, CertStatus, ProxyStatus } from '../../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
-import type { CaptureEntry } from '../../../shared/types';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Search } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
@@ -14,6 +13,7 @@ import { SHORTCUTS } from '../../../shared/shortcuts';
 import type { DetailMode } from './detailMode';
 import { ComposerWorkspace } from '@/features/composer/ComposerWorkspace';
 import { AutoResponderWorkspace } from '@/features/auto-responder/AutoResponderWorkspace';
+import { withCertGate } from '@/lib/cert-gate';
 
 interface CaptureViewProps {
   searchQuery: string;
@@ -24,9 +24,12 @@ interface CaptureViewProps {
   onComposerLoadHandled?: () => void;
   rulesLoadEntryId?: string | null;
   onRulesLoadHandled?: () => void;
-  onComposerSent?: () => void;
   onAddToComposer?: (entryId: string) => void;
   onCreateRule?: (entryId: string) => void;
+  onCaptureEntrySelect?: () => void;
+  certStatus?: CertStatus | null;
+  onOpenCertificateSettings?: () => void;
+  proxyStatusNonce?: number;
 }
 
 export function CaptureView({
@@ -38,9 +41,12 @@ export function CaptureView({
   onComposerLoadHandled,
   rulesLoadEntryId,
   onRulesLoadHandled,
-  onComposerSent,
   onAddToComposer,
   onCreateRule,
+  onCaptureEntrySelect,
+  certStatus,
+  onOpenCertificateSettings,
+  proxyStatusNonce = 0,
 }: CaptureViewProps) {
   const [entries, setEntries] = useState<CaptureEntrySummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -58,6 +64,10 @@ export function CaptureView({
   }, []);
 
   useEffect(() => {
+    void window.yanshuf.proxy.status().then(setStatus);
+  }, [proxyStatusNonce]);
+
+  useEffect(() => {
     if (!selectedId) {
       setSelectedEntry(null);
       return;
@@ -65,18 +75,35 @@ export function CaptureView({
     void window.yanshuf.capture.get(selectedId).then((entry) => setSelectedEntry(entry ?? null));
   }, [selectedId]);
 
+  const handleSelectEntry = (id: string) => {
+    setSelectedId(id);
+    onCaptureEntrySelect?.();
+  };
+
   const toggleProxy = async () => {
-    const next = status?.running
-      ? await window.yanshuf.proxy.stop()
-      : await window.yanshuf.proxy.start();
-    setStatus(next);
+    if (status?.running) {
+      const next = await window.yanshuf.proxy.stop();
+      setStatus(next);
+      return;
+    }
+    const next = await withCertGate(
+      () => window.yanshuf.proxy.start(),
+      () => onOpenCertificateSettings?.(),
+    );
+    if (next) setStatus(next);
   };
 
   const toggleSystemProxy = async () => {
-    const next = status?.systemProxyEnabled
-      ? await window.yanshuf.systemProxy.disable()
-      : await window.yanshuf.systemProxy.enable();
-    setStatus(next);
+    if (status?.systemProxyEnabled) {
+      const next = await window.yanshuf.systemProxy.disable();
+      setStatus(next);
+      return;
+    }
+    const next = await withCertGate(
+      () => window.yanshuf.systemProxy.enable(),
+      () => onOpenCertificateSettings?.(),
+    );
+    if (next) setStatus(next);
   };
 
   return (
@@ -106,7 +133,7 @@ export function CaptureView({
           <SessionList
             entries={entries}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={handleSelectEntry}
             searchQuery={searchQuery}
             draggable={detailMode !== 'capture'}
             onAddToComposer={onAddToComposer}
@@ -130,13 +157,7 @@ export function CaptureView({
             <ComposerWorkspace
               loadFromEntryId={composerLoadEntryId}
               onLoadHandled={onComposerLoadHandled}
-              onSent={() => {
-                void window.yanshuf.capture.list().then((entries) => {
-                  const last = entries[entries.length - 1];
-                  if (last) setSelectedId(last.id);
-                });
-                onComposerSent?.();
-              }}
+              onCertBlocked={onOpenCertificateSettings}
             />
           )}
           {detailMode === 'rules' && (
@@ -147,35 +168,73 @@ export function CaptureView({
           )}
         </Panel>
       </Group>
-      <StatusBar status={status} onToggleProxy={toggleProxy} onToggleSystemProxy={toggleSystemProxy} />
+      <StatusBar
+        status={status}
+        certStatus={certStatus}
+        onToggleProxy={toggleProxy}
+        onToggleSystemProxy={toggleSystemProxy}
+        onOpenCertificateSettings={onOpenCertificateSettings}
+      />
     </div>
   );
 }
 
 function StatusBar({
   status,
+  certStatus,
   onToggleProxy,
   onToggleSystemProxy,
+  onOpenCertificateSettings,
 }: {
   status: ProxyStatus | null;
+  certStatus?: CertStatus | null;
   onToggleProxy: () => void;
   onToggleSystemProxy: () => void;
+  onOpenCertificateSettings?: () => void;
 }) {
+  const certLabel =
+    certStatus?.trusted === 'installed'
+      ? 'Cert: Trusted'
+      : certStatus?.trusted === 'untrusted'
+        ? 'Cert: Needs trust'
+        : 'Cert: Not installed';
+  const certVariant =
+    certStatus?.trusted === 'installed'
+      ? 'success'
+      : certStatus?.trusted === 'untrusted'
+        ? 'outline'
+        : 'secondary';
+
   return (
     <div className="flex items-center gap-3 border-t bg-muted/30 px-3 py-1.5 text-xs">
-      <Badge variant={status?.running ? 'success' : 'secondary'}>
-        Proxy {status?.running ? 'On' : 'Off'}
-      </Badge>
-      <Button variant="ghost" size="sm" className="h-7 gap-2 px-2" onClick={onToggleProxy}>
-        Toggle Capture
-        <ShortcutHint keys={SHORTCUTS.toggleCapture.keys} />
-      </Button>
-      <Badge variant={status?.systemProxyEnabled ? 'success' : 'outline'}>
-        System Proxy {status?.systemProxyEnabled ? 'On' : 'Off'}
-      </Badge>
-      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onToggleSystemProxy}>
-        Toggle System Proxy
-      </Button>
+      <div data-tour="status-bar-toggles" className="flex items-center gap-3">
+        <Badge variant={status?.running ? 'success' : 'secondary'}>
+          Proxy {status?.running ? 'On' : 'Off'}
+        </Badge>
+        <Button variant="ghost" size="sm" className="h-7 gap-2 px-2" onClick={onToggleProxy}>
+          Toggle Capture
+          <ShortcutHint keys={SHORTCUTS.toggleCapture.keys} />
+        </Button>
+        <Badge variant={status?.systemProxyEnabled ? 'success' : 'outline'}>
+          System Proxy {status?.systemProxyEnabled ? 'On' : 'Off'}
+        </Badge>
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onToggleSystemProxy}>
+          Toggle System Proxy
+        </Button>
+      </div>
+      <button
+        type="button"
+        className="inline-flex"
+        onClick={() => onOpenCertificateSettings?.()}
+        title="Open certificate settings"
+      >
+        <Badge
+          variant={certVariant}
+          className={certStatus?.trusted === 'untrusted' ? 'border-amber-500 text-amber-700 dark:text-amber-300' : undefined}
+        >
+          {certLabel}
+        </Badge>
+      </button>
       <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
       <span className="text-muted-foreground">Entries: {status?.entryCount ?? 0}</span>
       <div className="ml-auto flex items-center gap-2">

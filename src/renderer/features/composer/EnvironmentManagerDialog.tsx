@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { notifyDeleted } from '@/lib/toast-actions';
 import { Plus, Trash2 } from 'lucide-react';
 
 interface EnvironmentManagerDialogProps {
@@ -102,8 +103,12 @@ export function EnvironmentManagerDialog({
   const deleteEnvironment = (id: string) => {
     const synced = syncSelectedVariables(draftEnvs);
     if (synced.length <= 1) return;
+    const removed = synced.find((env) => env.id === id);
     const next = synced.filter((env) => env.id !== id);
     setDraftEnvs(next);
+    if (removed) {
+      notifyDeleted(removed.name);
+    }
     if (selectedId === id) {
       const fallback = next[0];
       setSelectedId(fallback?.id ?? '');

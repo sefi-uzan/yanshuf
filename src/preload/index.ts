@@ -34,6 +34,8 @@ export interface YanshufAPI {
     install: () => Promise<{ alreadyInstalled: boolean; needsManualTrust: boolean }>;
     openKeychain: () => Promise<void>;
     verify: () => Promise<{ trusted: boolean; error?: string }>;
+    uninstall: () => Promise<void>;
+    reset: () => Promise<CertStatus>;
   };
   systemProxy: {
     enable: () => Promise<ProxyStatus>;
@@ -90,6 +92,8 @@ const api: YanshufAPI = {
     export: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_EXPORT),
     install: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_INSTALL),
     openKeychain: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_OPEN_KEYCHAIN),
+    uninstall: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_UNINSTALL),
+    reset: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_RESET),
   },
   systemProxy: {
     enable: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_PROXY_ENABLE),

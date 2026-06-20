@@ -36,6 +36,7 @@ export class CaptureStore {
       tls: e.tls,
       protocol: e.protocol,
       matchedRuleId: e.matchedRuleId,
+      fromComposer: e.fromComposer,
       requestBodySize: e.requestBodySize,
       responseBodySize: e.responseBodySize,
     }));
@@ -43,6 +44,13 @@ export class CaptureStore {
 
   get(id: string): CaptureEntry | undefined {
     return this.entries.find((e) => e.id === id);
+  }
+
+  markFromComposer(id: string): boolean {
+    const entry = this.entries.find((e) => e.id === id);
+    if (!entry) return false;
+    entry.fromComposer = true;
+    return true;
   }
 
   clear(): void {
@@ -66,6 +74,7 @@ export interface PendingCapture {
   requestHeaders: Record<string, string>;
   requestChunks: Buffer[];
   matchedRuleId?: string;
+  fromComposer?: boolean;
 }
 
 export function buildCaptureEntry(
@@ -92,6 +101,7 @@ export function buildCaptureEntry(
     tls: pending.tls,
     protocol: pending.protocol,
     matchedRuleId: pending.matchedRuleId,
+    fromComposer: pending.fromComposer,
     requestBodySize: requestBody.length,
     responseBodySize: responseBody.length,
     client: {

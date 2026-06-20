@@ -26,6 +26,7 @@ export interface CaptureEntrySummary {
   tls: boolean;
   protocol: Protocol;
   matchedRuleId?: string;
+  fromComposer?: boolean;
   requestBodySize: number;
   responseBodySize: number;
 }
@@ -98,18 +99,31 @@ export const DEFAULT_COMPOSER_SETTINGS: ComposerSettings = {
   activeEnvironmentId: 'default',
 };
 
+export type CaptureFilterMode = 'include' | 'exclude';
+
+export interface CaptureFilterSettings {
+  mode: CaptureFilterMode;
+  /** Semicolon-separated URL patterns, e.g. `*.google.com;*.example.com/api` */
+  urls: string;
+}
+
 export interface AppSettings {
   port: number;
   ringBufferSize: number;
   maxBodySize: number;
   systemProxyEnabled: boolean;
   proxyRunning: boolean;
+  guidedTourCompleted?: boolean;
+  captureFilter: CaptureFilterSettings;
 }
 
 export interface CertStatus {
   exists: boolean;
   trusted: 'unknown' | 'installed' | 'untrusted';
   caPath?: string;
+  commonName?: string;
+  /** Whether the local CA certificate is in the login keychain. */
+  keychainLocation?: 'none' | 'login';
 }
 
 export interface ProxyStatus {
@@ -127,12 +141,19 @@ export interface SystemProxyState {
   };
 }
 
+export const DEFAULT_CAPTURE_FILTER: CaptureFilterSettings = {
+  mode: 'exclude',
+  urls: '',
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   port: 8888,
   ringBufferSize: 10000,
   maxBodySize: 5 * 1024 * 1024,
   systemProxyEnabled: false,
   proxyRunning: false,
+  guidedTourCompleted: false,
+  captureFilter: DEFAULT_CAPTURE_FILTER,
 };
 
 export const IPC_CHANNELS = {
@@ -149,6 +170,8 @@ export const IPC_CHANNELS = {
   CERT_INSTALL: 'cert:install',
   CERT_OPEN_KEYCHAIN: 'cert:open-keychain',
   CERT_VERIFY: 'cert:verify',
+  CERT_UNINSTALL: 'cert:uninstall',
+  CERT_RESET: 'cert:reset',
   SYSTEM_PROXY_ENABLE: 'system-proxy:enable',
   SYSTEM_PROXY_DISABLE: 'system-proxy:disable',
   RULES_GET: 'rules:get',
@@ -176,5 +199,5 @@ export type MenuAction =
   | 'clear-session'
   | 'focus-search'
   | 'open-composer'
-  | 'replay-to-composer'
+  | 'open-rules'
   | 'install-certificate';

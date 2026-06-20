@@ -11,9 +11,12 @@ import type {
   ComposerSettings,
   MenuAction,
 } from '../shared/types';
-import { DEFAULT_COMPOSER_SETTINGS, DEFAULT_SETTINGS, IPC_CHANNELS } from '../shared/types';
+import { DEFAULT_COMPOSER_SETTINGS, DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS } from '../shared/types';
+import { shouldCaptureUrl } from '../shared/url-filter';
+import { substituteVariables } from '../shared/utils';
 import { AutoResponderEngine } from './auto-responder/engine';
 import { CertificateManager } from './cert/manager';
+import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
 import { exportCurl } from '../shared/composer-curl';
 import { CaptureStore } from './proxy/capture-store';
@@ -56,11 +59,23 @@ function applyAppIcon(): void {
   }
 }
 
+function buildShouldCapture(): (url: string) => boolean {
+  return (url) => shouldCaptureUrl(url, settings.captureFilter ?? DEFAULT_CAPTURE_FILTER);
+}
+
 async function loadState(): Promise<void> {
   store = new JsonFileStore(path.join(app.getPath('userData'), 'data'));
   await store.init();
 
-  settings = await store.read<AppSettings>('settings.json', DEFAULT_SETTINGS);
+  const stored = await store.read<Partial<AppSettings>>('settings.json', {});
+  settings = {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    captureFilter: {
+      ...DEFAULT_CAPTURE_FILTER,
+      ...stored.captureFilter,
+    },
+  };
   captureStore = new CaptureStore(settings.ringBufferSize);
   autoResponder = new AutoResponderEngine();
   const rules = await store.read<AutoResponderRule[]>('rules.json', []);
@@ -78,25 +93,30 @@ async function loadState(): Promise<void> {
     maxBodySize: settings.maxBodySize,
     captureStore,
     autoResponder,
+    shouldCapture: buildShouldCapture(),
   });
 
   proxyServer.on('capture', () => {
-    mainWindow?.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, captureStore.list());
+    broadcastCaptureUpdate();
   });
 
   if (settings.proxyRunning) {
     try {
+      await assertCertTrusted(certManager);
       await proxyServer.start();
     } catch {
       settings.proxyRunning = false;
+      await saveSettings();
     }
   }
 
   if (settings.systemProxyEnabled) {
     try {
+      await assertCertTrusted(certManager);
       await systemProxy.enable('127.0.0.1', settings.port);
     } catch {
       settings.systemProxyEnabled = false;
+      await saveSettings();
     }
   }
 }
@@ -112,6 +132,36 @@ function getProxyStatus() {
     entryCount: captureStore.count,
     systemProxyEnabled: systemProxy.isEnabled(),
   };
+}
+
+function broadcastCaptureUpdate(): void {
+  mainWindow?.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, captureStore.list());
+}
+
+function tagComposerCaptures(
+  beforeIds: Set<string>,
+  req: ComposerRequest,
+  vars: Record<string, string>,
+): void {
+  const method = req.method.toUpperCase();
+  const url = substituteVariables(req.url, vars);
+  let tagged = false;
+
+  for (const entry of captureStore.list()) {
+    if (beforeIds.has(entry.id)) continue;
+    if (entry.method.toUpperCase() === method && entry.url === url) {
+      captureStore.markFromComposer(entry.id);
+      tagged = true;
+    }
+  }
+
+  if (!tagged) {
+    for (const entry of captureStore.list()) {
+      if (!beforeIds.has(entry.id)) {
+        captureStore.markFromComposer(entry.id);
+      }
+    }
+  }
 }
 
 function sendMenuAction(action: MenuAction): void {
@@ -137,11 +187,6 @@ function buildMenu(): void {
     {
       label: 'File',
       submenu: [
-        {
-          label: 'New Session',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => sendMenuAction('clear-session'),
-        },
         {
           label: 'Clear Captured Requests',
           click: () => sendMenuAction('clear-session'),
@@ -192,12 +237,11 @@ function buildMenu(): void {
           click: () => sendMenuAction('open-composer'),
         },
         {
-          label: 'Replay to Composer',
+          label: 'Auto Responder',
           accelerator: 'CmdOrCtrl+R',
-          click: () => sendMenuAction('replay-to-composer'),
+          click: () => sendMenuAction('open-rules'),
         },
         { type: 'separator' },
-        { role: 'reload' },
         { role: 'toggleDevTools' },
       ],
     },
@@ -216,10 +260,15 @@ function buildMenu(): void {
 
 function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.PROXY_START, async () => {
-    await proxyServer.start();
-    settings.proxyRunning = true;
-    await saveSettings();
-    return getProxyStatus();
+    try {
+      await assertCertTrusted(certManager);
+      await proxyServer.start();
+      settings.proxyRunning = true;
+      await saveSettings();
+      return getProxyStatus();
+    } catch (err) {
+      rethrowCertIpcError(err);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STOP, async () => {
@@ -237,7 +286,7 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.CAPTURE_CLEAR, () => {
     captureStore.clear();
-    mainWindow?.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, []);
+    broadcastCaptureUpdate();
     return [];
   });
 
@@ -245,17 +294,37 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.CERT_EXPORT, () => certManager.exportCertificate());
 
-  ipcMain.handle(IPC_CHANNELS.CERT_INSTALL, () => certManager.installToSystemKeychain());
+  ipcMain.handle(IPC_CHANNELS.CERT_INSTALL, () => certManager.installToLoginKeychain());
 
   ipcMain.handle(IPC_CHANNELS.CERT_OPEN_KEYCHAIN, () => certManager.openKeychainAccess());
 
-  ipcMain.handle(IPC_CHANNELS.CERT_VERIFY, () => certManager.verifyTrust(settings.port));
+  ipcMain.handle(IPC_CHANNELS.CERT_VERIFY, () => certManager.verifyTrust());
+
+  ipcMain.handle(IPC_CHANNELS.CERT_UNINSTALL, () => certManager.uninstallFromKeychain());
+
+  ipcMain.handle(IPC_CHANNELS.CERT_RESET, async () => {
+    if (proxyServer.isRunning()) {
+      await proxyServer.stop();
+      settings.proxyRunning = false;
+    }
+    if (systemProxy.isEnabled()) {
+      await systemProxy.disable();
+      settings.systemProxyEnabled = false;
+    }
+    await saveSettings();
+    return certManager.resetCa();
+  });
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_ENABLE, async () => {
-    await systemProxy.enable('127.0.0.1', settings.port);
-    settings.systemProxyEnabled = true;
-    await saveSettings();
-    return getProxyStatus();
+    try {
+      await assertCertTrusted(certManager);
+      await systemProxy.enable('127.0.0.1', settings.port);
+      settings.systemProxyEnabled = true;
+      await saveSettings();
+      return getProxyStatus();
+    } catch (err) {
+      rethrowCertIpcError(err);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_DISABLE, async () => {
@@ -274,13 +343,22 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.COMPOSER_SEND, async (_e, req: ComposerRequest, vars: Record<string, string>) => {
-    if (!proxyServer.isRunning()) {
-      await proxyServer.start();
-      settings.proxyRunning = true;
-      await saveSettings();
+    try {
+      if (!proxyServer.isRunning()) {
+        await assertCertTrusted(certManager);
+        await proxyServer.start();
+        settings.proxyRunning = true;
+        await saveSettings();
+      }
+      const beforeIds = new Set(captureStore.list().map((entry) => entry.id));
+      const caCertPath = path.join(certManager.getSslCaDir(), 'certs', 'ca.pem');
+      const response = await composerService.send(req, vars, { proxyPort: settings.port, caCertPath });
+      tagComposerCaptures(beforeIds, req, vars);
+      broadcastCaptureUpdate();
+      return response;
+    } catch (err) {
+      rethrowCertIpcError(err);
     }
-    const caCertPath = path.join(certManager.getSslCaDir(), 'certs', 'ca.pem');
-    return composerService.send(req, vars, { proxyPort: settings.port, caCertPath });
   });
 
   ipcMain.handle(IPC_CHANNELS.COMPOSER_PARSE_CURL, (_e, curl: string) => parseCurl(curl));
@@ -334,9 +412,18 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings);
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
-    settings = next;
+    settings = {
+      ...next,
+      captureFilter: {
+        ...DEFAULT_CAPTURE_FILTER,
+        ...next.captureFilter,
+      },
+    };
     captureStore.setMaxSize(settings.ringBufferSize);
-    proxyServer.updateOptions({ maxBodySize: settings.maxBodySize });
+    proxyServer.updateOptions({
+      maxBodySize: settings.maxBodySize,
+      shouldCapture: buildShouldCapture(),
+    });
     await saveSettings();
     return settings;
   });

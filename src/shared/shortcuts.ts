@@ -9,10 +9,9 @@ export interface ShortcutDefinition {
 export const SHORTCUTS = {
   search: { id: 'search', label: 'Search', keys: ['mod', 'F'] },
   composer: { id: 'composer', label: 'Composer', keys: ['mod', 'K'] },
+  autoResponder: { id: 'autoResponder', label: 'Auto Responder', keys: ['mod', 'R'] },
   clearSession: { id: 'clearSession', label: 'Clear captured requests', keys: ['mod', 'X'] },
-  newSession: { id: 'newSession', label: 'New session', keys: ['mod', 'N'] },
   toggleCapture: { id: 'toggleCapture', label: 'Toggle capture', keys: ['mod', 'shift', 'P'] },
-  replayToComposer: { id: 'replayToComposer', label: 'Replay last to Composer', keys: ['mod', 'R'] },
 } as const satisfies Record<string, ShortcutDefinition>;
 
 export function isMac(): boolean {

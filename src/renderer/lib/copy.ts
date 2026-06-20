@@ -1,7 +1,45 @@
-export async function copyToClipboard(text: string): Promise<boolean> {
+import { toast } from 'sonner';
+
+export const COPY_SUCCESS_MESSAGE = 'Copied to clipboard';
+
+/** Origin + pathname, without query string or hash. */
+export function urlWithoutQuery(url: string): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    const queryIndex = url.indexOf('?');
+    const hashIndex = url.indexOf('#');
+    const end =
+      queryIndex >= 0 && hashIndex >= 0
+        ? Math.min(queryIndex, hashIndex)
+        : queryIndex >= 0
+          ? queryIndex
+          : hashIndex >= 0
+            ? hashIndex
+            : url.length;
+    return url.slice(0, end);
+  }
+}
+
+export async function copyToClipboard(
+  text: string,
+  options?: { toast?: boolean; message?: string },
+): Promise<boolean> {
   if (!text) return false;
+  const showToast = options?.toast ?? true;
+  const message = options?.message ?? COPY_SUCCESS_MESSAGE;
+
+  const notify = (ok: boolean) => {
+    if (!showToast) return;
+    if (ok) toast.success(message);
+    else toast.error('Failed to copy to clipboard');
+  };
+
   try {
     await navigator.clipboard.writeText(text);
+    notify(true);
     return true;
   } catch {
     try {
@@ -13,8 +51,10 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       textarea.select();
       document.execCommand('copy');
       document.body.removeChild(textarea);
+      notify(true);
       return true;
     } catch {
+      notify(false);
       return false;
     }
   }

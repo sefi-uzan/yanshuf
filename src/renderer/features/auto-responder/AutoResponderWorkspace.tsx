@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import { MoreVertical, Plus, Zap, FolderOpen } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
+import { notifyDeleted } from '@/lib/toast-actions';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
 import { captureToAutoResponderRule } from './captureToRule';
 
@@ -106,8 +107,12 @@ export function AutoResponderWorkspace({ loadFromEntryId, onLoadHandled }: AutoR
   };
 
   const deleteRule = (id: string) => {
+    const removed = rules.find((r) => r.id === id);
     const next = rules.filter((r) => r.id !== id);
     void save(next);
+    if (removed) {
+      notifyDeleted(removed.name);
+    }
     if (selectedId === id) {
       setSelectedId(next[0]?.id ?? null);
     }
@@ -166,7 +171,7 @@ export function AutoResponderWorkspace({ loadFromEntryId, onLoadHandled }: AutoR
                 {rules.map((rule) => (
                   <div
                     key={rule.id}
-                    className={`group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50 ${selected?.id === rule.id ? 'bg-accent' : ''}`}
+                    className={`group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50 ${selectedId === rule.id ? 'bg-accent' : ''}`}
                   >
                     <Checkbox
                       checked={rule.enabled}

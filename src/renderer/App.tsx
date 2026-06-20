@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CaptureView } from '@/features/capture/CaptureView';
 import type { DetailMode } from '@/features/capture/detailMode';
-import { CertWizard, SettingsPanel } from '@/features/settings/SettingsPanels';
+import { CertOnboarding } from '@/features/certificate/CertOnboarding';
+import { GuidedTour } from '@/features/guided-tour/GuidedTour';
+import { SettingsPanel, type SettingsTab } from '@/features/settings/SettingsPanels';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { ShortcutHint } from '@/components/shortcut-hints';
 import { cn } from '@/lib/utils';
+import { withCertGate } from '@/lib/cert-gate';
+import { clearCapturedRequests } from '@/lib/toast-actions';
 import { Settings, Shield, Zap, PenLine, Search } from 'lucide-react';
 import type { CertStatus } from '../shared/types';
 import { SHORTCUTS } from '../shared/shortcuts';
@@ -16,17 +20,71 @@ export default function App() {
   const [detailMode, setDetailMode] = useState<DetailMode>('capture');
   const [composerLoadEntryId, setComposerLoadEntryId] = useState<string | null>(null);
   const [rulesLoadEntryId, setRulesLoadEntryId] = useState<string | null>(null);
-  const [certOpen, setCertOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [certStatus, setCertStatus] = useState<CertStatus | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [proxyStatusNonce, setProxyStatusNonce] = useState(0);
+  const firstRunChecked = useRef(false);
 
   const refreshCertStatus = useCallback(() => {
     void window.yanshuf.cert.status().then(setCertStatus);
   }, []);
 
+  const openCertOnboarding = useCallback(() => {
+    setOnboardingOpen(true);
+  }, []);
+
+  const openCertificateSettings = useCallback(() => {
+    setSettingsTab('certificate');
+    setSettingsOpen(true);
+  }, []);
+
+  const openCertFlow = useCallback(() => {
+    if (certStatus?.trusted === 'installed') {
+      openCertificateSettings();
+    } else {
+      openCertOnboarding();
+    }
+  }, [certStatus?.trusted, openCertificateSettings, openCertOnboarding]);
+
+  const completeTour = useCallback(async () => {
+    setTourOpen(false);
+    const current = await window.yanshuf.settings.get();
+    await window.yanshuf.settings.save({ ...current, guidedTourCompleted: true });
+  }, []);
+
+  const replayTour = useCallback(() => {
+    setSettingsOpen(false);
+    setDetailMode('capture');
+    setTourOpen(true);
+  }, []);
+
+  const handleCertOnboardingComplete = useCallback(async () => {
+    try {
+      await window.yanshuf.systemProxy.enable();
+    } catch {
+      // Tour still runs; status bar reflects failure on next refresh.
+    }
+    setProxyStatusNonce((n) => n + 1);
+    const settings = await window.yanshuf.settings.get();
+    if (!settings.guidedTourCompleted) {
+      setTourOpen(true);
+    }
+  }, []);
+
   useEffect(() => {
-    refreshCertStatus();
-  }, [refreshCertStatus]);
+    void window.yanshuf.cert.status().then((status) => {
+      setCertStatus(status);
+      if (!firstRunChecked.current) {
+        firstRunChecked.current = true;
+        if (status.trusted !== 'installed') {
+          setOnboardingOpen(true);
+        }
+      }
+    });
+  }, []);
 
   const toggleDetailMode = useCallback((mode: DetailMode) => {
     setDetailMode((current) => (current === mode ? 'capture' : mode));
@@ -36,18 +94,24 @@ export default function App() {
     switch (action) {
       case 'toggle-proxy': {
         const status = await window.yanshuf.proxy.status();
-        if (status.running) await window.yanshuf.proxy.stop();
-        else await window.yanshuf.proxy.start();
+        if (status.running) {
+          await window.yanshuf.proxy.stop();
+        } else {
+          await withCertGate(() => window.yanshuf.proxy.start(), openCertOnboarding);
+        }
         break;
       }
       case 'toggle-system-proxy': {
         const status = await window.yanshuf.proxy.status();
-        if (status.systemProxyEnabled) await window.yanshuf.systemProxy.disable();
-        else await window.yanshuf.systemProxy.enable();
+        if (status.systemProxyEnabled) {
+          await window.yanshuf.systemProxy.disable();
+        } else {
+          await withCertGate(() => window.yanshuf.systemProxy.enable(), openCertOnboarding);
+        }
         break;
       }
       case 'clear-session':
-        await window.yanshuf.capture.clear();
+        await clearCapturedRequests();
         break;
       case 'focus-search':
         setSearchVisible(true);
@@ -58,20 +122,11 @@ export default function App() {
       case 'open-rules':
         toggleDetailMode('rules');
         break;
-      case 'replay-to-composer': {
-        const entries = await window.yanshuf.capture.list();
-        const last = entries[entries.length - 1];
-        if (last) {
-          setComposerLoadEntryId(last.id);
-          setDetailMode('composer');
-        }
-        break;
-      }
       case 'install-certificate':
-        setCertOpen(true);
+        openCertFlow();
         break;
     }
-  }, [toggleDetailMode]);
+  }, [toggleDetailMode, openCertFlow, openCertOnboarding]);
 
   useEffect(() => {
     return window.yanshuf.menu.onAction(handleMenuAction);
@@ -93,9 +148,13 @@ export default function App() {
         e.preventDefault();
         toggleDetailMode('composer');
       }
+      if (e.metaKey && e.key === 'r' && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        toggleDetailMode('rules');
+      }
       if (e.metaKey && e.key === 'x' && !e.shiftKey && !isEditableTarget(e.target)) {
         e.preventDefault();
-        void window.yanshuf.capture.clear();
+        void clearCapturedRequests();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -118,29 +177,37 @@ export default function App() {
             Search
             <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-2" />
           </Button>
+          <div data-tour="rules-composer" className="flex items-center gap-1">
+            <Button
+              variant={detailMode === 'rules' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => toggleDetailMode('rules')}
+            >
+              <Zap className="mr-1 h-4 w-4" /> Rules
+              <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-2" />
+            </Button>
+            <Button
+              variant={detailMode === 'composer' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => toggleDetailMode('composer')}
+            >
+              <PenLine className="mr-1 h-4 w-4" />
+              Composer
+              <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-2" />
+            </Button>
+          </div>
           <Button
-            variant={detailMode === 'rules' ? 'secondary' : 'ghost'}
+            variant="ghost"
             size="sm"
-            onClick={() => toggleDetailMode('rules')}
+            onClick={openCertFlow}
+            title={
+              certStatus?.trusted === 'installed'
+                ? 'Certificate installed and trusted'
+                : certStatus?.trusted === 'untrusted'
+                  ? 'Certificate needs Always Trust'
+                  : 'Install root certificate'
+            }
           >
-            <Zap className="mr-1 h-4 w-4" /> Rules
-          </Button>
-          <Button
-            variant={detailMode === 'composer' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => toggleDetailMode('composer')}
-          >
-            <PenLine className="mr-1 h-4 w-4" />
-            Composer
-            <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-2" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setCertOpen(true)} title={
-            certStatus?.trusted === 'installed'
-              ? 'Certificate installed and trusted'
-              : certStatus?.trusted === 'untrusted'
-                ? 'Certificate needs Always Trust'
-                : 'Install root certificate'
-          }>
             <Shield
               className={cn(
                 'mr-1 h-4 w-4',
@@ -150,7 +217,10 @@ export default function App() {
             />
             Certificate
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
+          <Button variant="ghost" size="icon" onClick={() => {
+            setSettingsTab('general');
+            setSettingsOpen(true);
+          }}>
             <Settings className="h-4 w-4" />
           </Button>
         </div>
@@ -165,7 +235,6 @@ export default function App() {
           onComposerLoadHandled={() => setComposerLoadEntryId(null)}
           rulesLoadEntryId={rulesLoadEntryId}
           onRulesLoadHandled={() => setRulesLoadEntryId(null)}
-          onComposerSent={() => setDetailMode('capture')}
           onAddToComposer={(entryId) => {
             setComposerLoadEntryId(entryId);
             setDetailMode('composer');
@@ -174,17 +243,37 @@ export default function App() {
             setRulesLoadEntryId(entryId);
             setDetailMode('rules');
           }}
+          onCaptureEntrySelect={() => setDetailMode('capture')}
+          certStatus={certStatus}
+          onOpenCertificateSettings={openCertFlow}
+          proxyStatusNonce={proxyStatusNonce}
         />
       </main>
-      <CertWizard
-        open={certOpen}
+      <CertOnboarding
+        open={onboardingOpen}
         onOpenChange={(open) => {
-          setCertOpen(open);
+          setOnboardingOpen(open);
           if (!open) refreshCertStatus();
         }}
         onStatusChange={setCertStatus}
+        onComplete={handleCertOnboardingComplete}
       />
-      <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <GuidedTour open={tourOpen} onComplete={completeTour} />
+      <SettingsPanel
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          setSettingsOpen(open);
+          if (!open) refreshCertStatus();
+        }}
+        defaultTab={settingsTab}
+        onCertStatusChange={setCertStatus}
+        onOpenCertOnboarding={() => {
+          setSettingsOpen(false);
+          setOnboardingOpen(true);
+        }}
+        onReplayTour={replayTour}
+        certStatus={certStatus}
+      />
     </div>
   );
 }
