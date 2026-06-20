@@ -200,7 +200,7 @@ export function AiIntegrationSettings({
       {status.prerequisites && (
         <PrerequisitesStrip
           prereqs={status.prerequisites}
-          variant="inline"
+          variant={status.prerequisites.allMet ? 'inline' : 'stack'}
           onOpenCertificate={onOpenCertificate}
         />
       )}
