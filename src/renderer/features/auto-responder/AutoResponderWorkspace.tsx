@@ -1,16 +1,10 @@
-import { useEffect, useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { HTTP_METHODS } from '../../../shared/http';
-import type { AutoResponderRule } from '../../../shared/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AutoResponderRule, InterceptRule } from '../../../shared/types';
+import { RULE_REORDER_MIME } from '../../../shared/dnd';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  FloatingLabelInput,
-  FloatingLabelSelect,
-  FloatingLabelTextarea,
-} from '@/components/ui/floating-label-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,52 +18,111 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { MoreVertical, Plus, Zap, FolderOpen } from 'lucide-react';
-import { CopyUrlButton } from '@/components/CopyUrlButton';
+import { cn } from '@/lib/utils';
+import {
+  ChevronDown,
+  GripVertical,
+  MoreVertical,
+  PauseCircle,
+  PenLine,
+  Plus,
+  Zap,
+} from 'lucide-react';
 import { notifyDeleted } from '@/lib/toast-actions';
+import { setListItemDragImage, removeListItemDragImage } from '@/lib/dnd';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
-import { captureToAutoResponderRule } from './captureToRule';
+import { WorkspaceEmptyCards, WorkspaceShell } from '@/components/workspace/WorkspaceShell';
+import { captureToAutoResponderRule } from '@/features/auto-responder/captureToRule';
+import { InterceptRuleEditor } from '@/features/rules/InterceptRuleEditor';
+import { MockRuleEditor } from '@/features/rules/MockRuleEditor';
+import { RuleActionPicker, ruleActionAccentClass } from '@/features/rules/RuleActionPicker';
+import {
+  emptyInterceptRule,
+  emptyMockRule,
+  reorderInterceptRules,
+  reorderMockRules,
+  ruleActionFromIntercept,
+  ruleActionDescription,
+  ruleActionLabel,
+  type RuleAction,
+  type RuleFilter,
+  type SelectedRuleRef,
+} from '@/features/rules/rule-types';
 
 interface AutoResponderWorkspaceProps {
   loadFromEntryId?: string | null;
   onLoadHandled?: () => void;
 }
 
-function emptyRule(order: number): AutoResponderRule {
-  return {
-    id: uuidv4(),
-    name: 'New Rule',
-    enabled: true,
-    order,
-    match: { urlRegex: '.*', method: 'GET' },
-    response: {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: { type: 'inline', content: '{"mock": true}' },
-      delayMs: 0,
-    },
-  };
-}
+type ListEntry =
+  | { kind: 'mock'; rule: AutoResponderRule; action: 'mock' }
+  | { kind: 'intercept'; rule: InterceptRule; action: RuleAction };
 
-function ruleListLabel(rule: AutoResponderRule): string {
-  const method = rule.match.method?.toUpperCase();
-  if (method && rule.name.toUpperCase().startsWith(`${method} `)) {
-    return rule.name.slice(method.length + 1);
-  }
-  return rule.name;
-}
+const FILTER_OPTIONS: { value: RuleFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'mock', label: 'Mock' },
+  { value: 'intercept', label: 'Intercept' },
+];
 
 export function AutoResponderWorkspace({ loadFromEntryId, onLoadHandled }: AutoResponderWorkspaceProps) {
-  const [rules, setRules] = useState<AutoResponderRule[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mockRules, setMockRules] = useState<AutoResponderRule[]>([]);
+  const [interceptRules, setInterceptRules] = useState<InterceptRule[]>([]);
+  const [selected, setSelected] = useState<SelectedRuleRef | null>(null);
   const [headersDraft, setHeadersDraft] = useState('{}');
-  const [ruleToDelete, setRuleToDelete] = useState<string | null>(null);
+  const [requestHeadersDraft, setRequestHeadersDraft] = useState('{}');
+  const [responseHeadersDraft, setResponseHeadersDraft] = useState('{}');
+  const [ruleToDelete, setRuleToDelete] = useState<SelectedRuleRef | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [filter, setFilter] = useState<RuleFilter>('all');
 
-  const selected = rules.find((r) => r.id === selectedId) ?? rules[0];
-  const pendingDeleteRule = rules.find((r) => r.id === ruleToDelete);
+  const selectedMock = selected?.kind === 'mock'
+    ? mockRules.find((r) => r.id === selected.id)
+    : undefined;
+  const selectedIntercept = selected?.kind === 'intercept'
+    ? interceptRules.find((r) => r.id === selected.id)
+    : undefined;
+
+  const pendingDelete = ruleToDelete?.kind === 'mock'
+    ? mockRules.find((r) => r.id === ruleToDelete.id)
+    : ruleToDelete?.kind === 'intercept'
+      ? interceptRules.find((r) => r.id === ruleToDelete.id)
+      : undefined;
+
+  const listEntries = useMemo(() => {
+    const mockEntries: ListEntry[] = mockRules.map((rule) => ({
+      kind: 'mock',
+      rule,
+      action: 'mock',
+    }));
+    const interceptEntries: ListEntry[] = interceptRules.map((rule) => ({
+      kind: 'intercept',
+      rule,
+      action: ruleActionFromIntercept(rule),
+    }));
+    const merged = [...mockEntries, ...interceptEntries];
+    if (filter === 'mock') return mockEntries;
+    if (filter === 'intercept') return interceptEntries;
+    return merged;
+  }, [mockRules, interceptRules, filter]);
+
+  const selectedAction: RuleAction | null = selectedMock
+    ? 'mock'
+    : selectedIntercept
+      ? ruleActionFromIntercept(selectedIntercept)
+      : null;
 
   useEffect(() => {
-    void window.yanshuf.rules.get().then(setRules);
+    void Promise.all([
+      window.yanshuf.rules.get(),
+      window.yanshuf.intercept.getRules(),
+    ]).then(([mocks, intercepts]) => {
+      setMockRules(mocks);
+      setInterceptRules(intercepts);
+      if (!selected) {
+        if (mocks[0]) setSelected({ kind: 'mock', id: mocks[0].id });
+        else if (intercepts[0]) setSelected({ kind: 'intercept', id: intercepts[0].id });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -83,175 +136,318 @@ export function AutoResponderWorkspace({ loadFromEntryId, onLoadHandled }: AutoR
       const existing = await window.yanshuf.rules.get();
       const rule = captureToAutoResponderRule(entry, existing.length);
       const next = [...existing, rule];
-      setRules(next);
-      setSelectedId(rule.id);
+      setMockRules(next);
+      setSelected({ kind: 'mock', id: rule.id });
       await window.yanshuf.rules.save(next);
       onLoadHandled?.();
     })();
   }, [loadFromEntryId, onLoadHandled]);
 
   useEffect(() => {
-    if (!selected) return;
-    setHeadersDraft(JSON.stringify(selected.response.headers, null, 2));
-  }, [selected?.id, selected?.response.headers]);
+    if (selectedMock) {
+      setHeadersDraft(JSON.stringify(selectedMock.response.headers, null, 2));
+      return;
+    }
+    if (selectedIntercept) {
+      setRequestHeadersDraft(JSON.stringify(selectedIntercept.request?.headers ?? {}, null, 2));
+      setResponseHeadersDraft(JSON.stringify(selectedIntercept.response?.headers ?? {}, null, 2));
+    }
+  }, [
+    selectedMock?.id,
+    selectedMock?.response.headers,
+    selectedIntercept?.id,
+    selectedIntercept?.request?.headers,
+    selectedIntercept?.response?.headers,
+  ]);
 
-  const save = async (next: AutoResponderRule[]) => {
-    setRules(next);
+  const saveMockRules = async (next: AutoResponderRule[]) => {
+    setMockRules(next);
     await window.yanshuf.rules.save(next);
   };
 
-  const updateSelected = (patch: Partial<AutoResponderRule>) => {
-    if (!selected) return;
-    const next = rules.map((r) => (r.id === selected.id ? { ...r, ...patch } : r));
-    void save(next);
+  const saveInterceptRules = async (next: InterceptRule[]) => {
+    setInterceptRules(next);
+    await window.yanshuf.intercept.saveRules(next);
   };
 
-  const deleteRule = (id: string) => {
-    const removed = rules.find((r) => r.id === id);
-    const next = rules.filter((r) => r.id !== id);
-    void save(next);
-    if (removed) {
-      notifyDeleted(removed.name);
+  const updateSelectedMock = (patch: Partial<AutoResponderRule>) => {
+    if (!selectedMock) return;
+    const next = mockRules.map((r) => (r.id === selectedMock.id ? { ...r, ...patch } : r));
+    void saveMockRules(next);
+  };
+
+  const updateSelectedIntercept = (patch: Partial<InterceptRule>) => {
+    if (!selectedIntercept) return;
+    const next = interceptRules.map((r) => (r.id === selectedIntercept.id ? { ...r, ...patch } : r));
+    void saveInterceptRules(next);
+  };
+
+  const deleteRule = (ref: SelectedRuleRef) => {
+    if (ref.kind === 'mock') {
+      const removed = mockRules.find((r) => r.id === ref.id);
+      const next = mockRules.filter((r) => r.id !== ref.id);
+      void saveMockRules(next);
+      if (removed) notifyDeleted(removed.name);
+      if (selected?.kind === 'mock' && selected.id === ref.id) {
+        setSelected(next[0] ? { kind: 'mock', id: next[0].id } : interceptRules[0] ? { kind: 'intercept', id: interceptRules[0].id } : null);
+      }
+      return;
     }
-    if (selectedId === id) {
-      setSelectedId(next[0]?.id ?? null);
+
+    const removed = interceptRules.find((r) => r.id === ref.id);
+    const next = interceptRules.filter((r) => r.id !== ref.id);
+    void saveInterceptRules(next);
+    if (removed) notifyDeleted(removed.name);
+    if (selected?.kind === 'intercept' && selected.id === ref.id) {
+      setSelected(mockRules[0] ? { kind: 'mock', id: mockRules[0].id } : next[0] ? { kind: 'intercept', id: next[0].id } : null);
     }
   };
 
-  const confirmDeleteRule = () => {
-    if (!ruleToDelete) return;
-    deleteRule(ruleToDelete);
-    setRuleToDelete(null);
-  };
+  const addRule = (action: RuleAction) => {
+    if (action === 'mock') {
+      const rule = emptyMockRule(mockRules.length);
+      void saveMockRules([...mockRules, rule]);
+      setSelected({ kind: 'mock', id: rule.id });
+      if (filter === 'intercept') setFilter('all');
+      return;
+    }
 
-  const moveRule = (id: string, direction: -1 | 1) => {
-    const idx = rules.findIndex((r) => r.id === id);
-    const target = idx + direction;
-    if (target < 0 || target >= rules.length) return;
-    const next = [...rules];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    next.forEach((r, i) => { r.order = i; });
-    void save(next);
-  };
-
-  const addRule = () => {
-    const rule = emptyRule(rules.length);
-    void save([...rules, rule]);
-    setSelectedId(rule.id);
+    const mode = action === 'breakpoint' ? 'breakpoint' : 'rewrite';
+    const rule = emptyInterceptRule(interceptRules.length, mode);
+    void saveInterceptRules([...interceptRules, rule]);
+    setSelected({ kind: 'intercept', id: rule.id });
+    if (filter === 'mock') setFilter('all');
   };
 
   const loadFromCapture = async (entryId: string) => {
     const entry = await window.yanshuf.capture.get(entryId);
     if (!entry) return;
-    const rule = captureToAutoResponderRule(entry, rules.length);
-    const next = [...rules, rule];
-    await save(next);
-    setSelectedId(rule.id);
+    const rule = captureToAutoResponderRule(entry, mockRules.length);
+    const next = [...mockRules, rule];
+    await saveMockRules(next);
+    setSelected({ kind: 'mock', id: rule.id });
   };
+
+  const handleInterceptModeChange = (action: RuleAction) => {
+    if (!selectedIntercept || action === 'mock') return;
+    const mode = action === 'breakpoint' ? 'breakpoint' : 'rewrite';
+    if (selectedIntercept.mode === mode) return;
+    updateSelectedIntercept({ mode });
+  };
+
+  const entryKey = (entry: ListEntry) => `${entry.kind}:${entry.rule.id}`;
+
+  const totalCount = mockRules.length + interceptRules.length;
+
+  const filterPills = (
+    <div className="flex items-center rounded-md border bg-background/80 p-0.5">
+      {FILTER_OPTIONS.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setFilter(value)}
+          className={cn(
+            'rounded px-2.5 py-1 text-[11px] font-medium transition-colors',
+            filter === value
+              ? 'bg-foreground text-background shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <DropCaptureZone
-      className="h-full"
-      hint="Drop capture to create rule"
+      className="h-full min-h-0"
+      hint="Drop capture to create mock rule"
       onDropCapture={(id) => void loadFromCapture(id)}
     >
-      <div className="flex h-full flex-col">
-        <div className="border-b px-3 py-2 text-sm font-medium">Auto Responder</div>
-        {rules.length === 0 ? (
-          <RulesEmptyState onAddRule={addRule} />
-        ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-[224px_1fr] gap-4 p-3">
-            <div className="flex min-h-0 flex-col gap-2">
-              <Button size="sm" onClick={addRule}>
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                Add Rule
-              </Button>
-              <ScrollArea className="min-h-0 flex-1 rounded-md border">
-                <div className="pr-1">
-                {rules.map((rule) => (
-                  <div
-                    key={rule.id}
-                    className={`group flex w-full items-center gap-1.5 border-b py-2 pl-2 pr-1 hover:bg-accent/50 ${selectedId === rule.id ? 'bg-accent' : ''}`}
-                  >
-                    <Checkbox
-                      checked={rule.enabled}
-                      aria-label={`${rule.enabled ? 'Disable' : 'Enable'} ${rule.name}`}
-                      onChange={(e) => {
-                        void save(rules.map((r) => (r.id === rule.id ? { ...r, enabled: e.target.checked } : r)));
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(rule.id)}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm hover:bg-transparent"
-                    >
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 px-1 py-0 font-mono text-[10px] leading-4"
-                      >
-                        {rule.match.method?.toUpperCase() || 'ANY'}
-                      </Badge>
-                      <span className="truncate">{ruleListLabel(rule)}</span>
-                    </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-accent/80 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                          aria-label={`Actions for ${rule.name}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setRuleToDelete(rule.id)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ))}
-                </div>
-              </ScrollArea>
+      <WorkspaceShell
+        title="Traffic rules"
+        description="Mock responses or intercept live traffic — first match wins."
+        headerActions={(
+          <>
+            <div className="hidden sm:block">{filterPills}</div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="gap-1">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add rule
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => addRule('mock')}>
+                  <Zap className="mr-2 h-4 w-4 text-amber-600" />
+                  Mock response
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => addRule('rewrite')}>
+                  <PenLine className="mr-2 h-4 w-4 text-sky-600" />
+                  Rewrite traffic
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => addRule('breakpoint')}>
+                  <PauseCircle className="mr-2 h-4 w-4 text-orange-600" />
+                  Breakpoint
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+        empty={totalCount === 0}
+        emptyContent={(
+          <WorkspaceEmptyCards
+            heading="Shape your traffic"
+            description="Rules match requests by URL regex. Choose how matching traffic should behave."
+            footer="Drag a captured request from the session list to pre-fill a mock rule from a real exchange."
+            cards={[
+              {
+                key: 'mock',
+                icon: <Zap className="h-5 w-5 text-amber-600 dark:text-amber-400" />,
+                title: ruleActionLabel('mock'),
+                description: ruleActionDescription('mock'),
+                accent: 'text-amber-600 dark:text-amber-400',
+                border: 'hover:border-amber-500/40 hover:bg-amber-500/[0.04]',
+                onClick: () => addRule('mock'),
+              },
+              {
+                key: 'rewrite',
+                icon: <PenLine className="h-5 w-5 text-sky-600 dark:text-sky-400" />,
+                title: ruleActionLabel('rewrite'),
+                description: ruleActionDescription('rewrite'),
+                accent: 'text-sky-600 dark:text-sky-400',
+                border: 'hover:border-sky-500/40 hover:bg-sky-500/[0.04]',
+                onClick: () => addRule('rewrite'),
+              },
+              {
+                key: 'breakpoint',
+                icon: <PauseCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />,
+                title: ruleActionLabel('breakpoint'),
+                description: ruleActionDescription('breakpoint'),
+                accent: 'text-orange-600 dark:text-orange-400',
+                border: 'hover:border-orange-500/40 hover:bg-orange-500/[0.04]',
+                onClick: () => addRule('breakpoint'),
+              },
+            ]}
+          />
+        )}
+        sidebarHeader={(
+          <div className="border-b px-3 py-2 sm:hidden">{filterPills}</div>
+        )}
+        sidebar={(
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-2">
+              {listEntries.length === 0 ? (
+                <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                  No {filter === 'all' ? '' : filter} rules yet.
+                </p>
+              ) : (
+                listEntries.map((entry) => (
+                  <RuleListItem
+                    key={entryKey(entry)}
+                    entry={entry}
+                    selected={selected?.kind === entry.kind && selected.id === entry.rule.id}
+                    dragOver={dragOverKey === entryKey(entry)}
+                    onSelect={() => setSelected({ kind: entry.kind, id: entry.rule.id })}
+                    onToggleEnabled={(enabled) => {
+                      if (entry.kind === 'mock') {
+                        void saveMockRules(mockRules.map((r) => (r.id === entry.rule.id ? { ...r, enabled } : r)));
+                      } else {
+                        void saveInterceptRules(interceptRules.map((r) => (r.id === entry.rule.id ? { ...r, enabled } : r)));
+                      }
+                    }}
+                    onDeleteRequest={() => setRuleToDelete({ kind: entry.kind, id: entry.rule.id })}
+                    onReorder={(fromId, toId) => {
+                      if (entry.kind === 'mock') {
+                        void saveMockRules(reorderMockRules(mockRules, fromId, toId));
+                      } else {
+                        void saveInterceptRules(reorderInterceptRules(interceptRules, fromId, toId));
+                      }
+                    }}
+                    onDragOverChange={(key) => setDragOverKey(key)}
+                    entryKey={entryKey(entry)}
+                  />
+                ))
+              )}
             </div>
-            {selected ? (
-              <ScrollArea className="min-h-0">
-                <RuleEditor
-                  selected={selected}
+          </ScrollArea>
+        )}
+      >
+        {selectedMock || selectedIntercept ? (
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-4">
+              {selectedAction && (
+                <div className="mb-4 rounded-xl border bg-muted/20 p-3 shadow-sm">
+                  {selectedMock ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        <Zap className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">Mock response</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ruleActionDescription('mock')}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <RuleActionPicker
+                      value={selectedAction}
+                      options={['rewrite', 'breakpoint']}
+                      onChange={(action) => handleInterceptModeChange(action)}
+                    />
+                  )}
+                </div>
+              )}
+              {selectedMock ? (
+                <MockRuleEditor
+                  selected={selectedMock}
                   headersDraft={headersDraft}
                   onHeadersDraftChange={setHeadersDraft}
-                  onUpdate={updateSelected}
-                  onMove={(direction) => moveRule(selected.id, direction)}
-                  onDelete={() => setRuleToDelete(selected.id)}
+                  onUpdate={updateSelectedMock}
                 />
-              </ScrollArea>
-            ) : (
-              <div className="flex items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                Select a rule to edit
-              </div>
-            )}
+              ) : selectedIntercept ? (
+                <InterceptRuleEditor
+                  selected={selectedIntercept}
+                  requestHeadersDraft={requestHeadersDraft}
+                  responseHeadersDraft={responseHeadersDraft}
+                  onRequestHeadersDraftChange={setRequestHeadersDraft}
+                  onResponseHeadersDraftChange={setResponseHeadersDraft}
+                  onUpdate={updateSelectedIntercept}
+                />
+              ) : null}
+            </div>
+          </ScrollArea>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+            <p className="text-sm text-muted-foreground">Select a rule to edit</p>
+            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+              Or add a new rule from the toolbar above.
+            </p>
           </div>
         )}
-      </div>
+      </WorkspaceShell>
+
       <Dialog open={ruleToDelete !== null} onOpenChange={(open) => !open && setRuleToDelete(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete rule?</DialogTitle>
             <DialogDescription>
-              This will permanently delete &quot;{pendingDeleteRule?.name ?? 'this rule'}&quot;. This
-              action cannot be undone.
+              This will permanently delete &quot;{pendingDelete?.name ?? 'this rule'}&quot;. This action
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRuleToDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDeleteRule}>
+            <Button variant="outline" onClick={() => setRuleToDelete(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (ruleToDelete) deleteRule(ruleToDelete);
+                setRuleToDelete(null);
+              }}
+            >
               Delete
             </Button>
           </div>
@@ -261,163 +457,132 @@ export function AutoResponderWorkspace({ loadFromEntryId, onLoadHandled }: AutoR
   );
 }
 
-function RulesEmptyState({ onAddRule }: { onAddRule: () => void }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 py-10 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-        <Zap className="h-7 w-7 text-muted-foreground" />
-      </div>
-      <h3 className="text-base font-medium">No rules yet</h3>
-      <p className="mt-2 max-w-md text-sm text-muted-foreground">
-        Auto Responder intercepts matching requests and returns a synthetic response — useful for
-        mocking APIs without changing your app.
-      </p>
-      <p className="mt-4 max-w-md text-xs text-muted-foreground">
-        Drag a captured request from the session list here to pre-fill a rule from a real exchange.
-      </p>
-      <Button className="mt-6" onClick={onAddRule}>
-        <Plus className="mr-1 h-4 w-4" />
-        Create Rule
-      </Button>
-    </div>
-  );
-}
-
-function RuleEditor({
+function RuleListItem({
+  entry,
   selected,
-  headersDraft,
-  onHeadersDraftChange,
-  onUpdate,
-  onMove,
-  onDelete,
+  dragOver,
+  onSelect,
+  onToggleEnabled,
+  onDeleteRequest,
+  onReorder,
+  onDragOverChange,
+  entryKey,
 }: {
-  selected: AutoResponderRule;
-  headersDraft: string;
-  onHeadersDraftChange: (value: string) => void;
-  onUpdate: (patch: Partial<AutoResponderRule>) => void;
-  onMove: (direction: -1 | 1) => void;
-  onDelete: () => void;
+  entry: ListEntry;
+  selected: boolean;
+  dragOver: boolean;
+  onSelect: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDeleteRequest: () => void;
+  onReorder: (fromId: string, toId: string) => void;
+  onDragOverChange: (key: string | null) => void;
+  entryKey: string;
 }) {
+  const { rule, action } = entry;
+  const reorderMime = `${RULE_REORDER_MIME}:${entry.kind}`;
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+
   return (
-    <div className="space-y-3 pt-2.5 pr-3">
-      <FloatingLabelInput
-        label="Rule name"
-        value={selected.name}
-        onChange={(e) => onUpdate({ name: e.target.value })}
-      />
-      <div className="flex w-full items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <FloatingLabelInput
-            className="font-mono"
-            label="URL regex"
-            value={selected.match.urlRegex ?? ''}
-            onChange={(e) => onUpdate({ match: { ...selected.match, urlRegex: e.target.value } })}
-          />
-        </div>
-        <CopyUrlButton
-          value={selected.match.urlRegex ?? ''}
-          fromRegex
-          title="Copy match URL"
-        />
-      </div>
-      <FloatingLabelSelect
-        label="Method"
-        value={selected.match.method ?? ''}
-        onChange={(e) => onUpdate({
-          match: { ...selected.match, method: e.target.value || undefined },
-        })}
-      >
-        <option value="">Any</option>
-        {HTTP_METHODS.map((method) => (
-          <option key={method} value={method}>{method}</option>
-        ))}
-      </FloatingLabelSelect>
-      <div className="grid grid-cols-2 gap-2">
-        <FloatingLabelInput
-          type="number"
-          label="Status"
-          value={selected.response.status}
-          onChange={(e) => onUpdate({ response: { ...selected.response, status: Number(e.target.value) } })}
-        />
-        <FloatingLabelInput
-          type="number"
-          label="Delay ms"
-          value={selected.response.delayMs ?? 0}
-          onChange={(e) => onUpdate({ response: { ...selected.response, delayMs: Number(e.target.value) } })}
-        />
-      </div>
-      <FloatingLabelTextarea
-        className="min-h-[80px] font-mono text-xs"
-        label="Response headers (JSON object)"
-        value={headersDraft}
-        onChange={(e) => {
-          onHeadersDraftChange(e.target.value);
-          try {
-            const headers = JSON.parse(e.target.value) as Record<string, string>;
-            onUpdate({ response: { ...selected.response, headers } });
-          } catch {
-            // Allow invalid JSON while editing.
+    <div
+      ref={rowRef}
+      className={cn(
+        'group mb-1 flex w-full items-center gap-1 rounded-md border border-transparent border-l-[3px] py-2 pl-1 pr-1 transition-colors hover:bg-accent/50',
+        ruleActionAccentClass(action),
+        selected && 'border-border bg-accent shadow-sm',
+        dragOver && 'border-t-2 border-t-primary bg-accent/30',
+        !rule.enabled && 'opacity-50',
+        dragging && 'opacity-40',
+      )}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(reorderMime)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        onDragOverChange(entryKey);
+      }}
+      onDragLeave={() => onDragOverChange(null)}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes(reorderMime)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const fromId = e.dataTransfer.getData(reorderMime);
+        onDragOverChange(null);
+        if (fromId && fromId !== rule.id) onReorder(fromId, rule.id);
+      }}
+    >
+      <button
+        type="button"
+        draggable
+        className="cursor-grab touch-none px-0.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        aria-label={`Reorder ${rule.name}`}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(reorderMime, rule.id);
+          e.dataTransfer.effectAllowed = 'move';
+          if (rowRef.current) {
+            setListItemDragImage(e.nativeEvent, rowRef.current);
           }
+          setDragging(true);
         }}
+        onDragEnd={() => {
+          setDragging(false);
+          removeListItemDragImage();
+          onDragOverChange(null);
+        }}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <Checkbox
+        checked={rule.enabled}
+        aria-label={`${rule.enabled ? 'Disable' : 'Enable'} ${rule.name}`}
+        onChange={(e) => onToggleEnabled(e.target.checked)}
       />
-      <FloatingLabelTextarea
-        className="font-mono text-xs"
-        label="Response body (inline JSON)"
-        value={selected.response.body?.type === 'inline' ? selected.response.body.content : ''}
-        onChange={(e) => onUpdate({
-          response: {
-            ...selected.response,
-            body: { type: 'inline', content: e.target.value },
-          },
-        })}
-      />
-      <div className="flex gap-2">
-        <FloatingLabelInput
-          readOnly
-          className="min-w-0 flex-1 font-mono text-xs"
-          label="Response file"
-          value={selected.response.body?.type === 'file' ? selected.response.body.path : ''}
-        />
-        <Button
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 flex-col items-start text-left text-sm hover:bg-transparent"
+      >
+        <span className="truncate font-medium">{rule.name}</span>
+        <span className="mt-0.5 flex items-center gap-1.5">
+          <Badge
             variant="outline"
-            size="sm"
-            type="button"
-            onClick={() => {
-              void window.yanshuf.dialog.pickFile({ title: 'Select response file' }).then((filePath) => {
-                if (!filePath) return;
-                onUpdate({
-                  response: {
-                    ...selected.response,
-                    body: { type: 'file', path: filePath },
-                  },
-                });
-              });
-            }}
+            className={cn(
+              'h-4 px-1.5 text-[9px] font-semibold uppercase tracking-wide',
+              action === 'mock' && 'border-amber-500/30 text-amber-700 dark:text-amber-400',
+              action === 'rewrite' && 'border-sky-500/30 text-sky-700 dark:text-sky-400',
+              action === 'breakpoint' && 'border-orange-500/30 text-orange-700 dark:text-orange-400',
+            )}
           >
-            <FolderOpen className="mr-1 h-3.5 w-3.5" />
-            Browse
-          </Button>
-        {selected.response.body?.type === 'file' && (
+            {ruleActionLabel(action)}
+          </Badge>
+          {entry.kind === 'intercept' && (
+            <span className="truncate text-[10px] text-muted-foreground">
+              {entry.rule.phase}
+            </span>
+          )}
+        </span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              onClick={() => onUpdate({
-                response: {
-                  ...selected.response,
-                  body: { type: 'inline', content: '' },
-                },
-              })}
-            >
-              Clear
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+            aria-label={`Actions for ${rule.name}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreVertical className="h-4 w-4" />
           </Button>
-        )}
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={() => onMove(-1)}>Move Up</Button>
-        <Button variant="outline" size="sm" onClick={() => onMove(1)}>Move Down</Button>
-        <Button variant="destructive" size="sm" onClick={onDelete}>Delete</Button>
-      </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={onDeleteRequest}
+          >
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -1,10 +1,18 @@
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
+import type { ServerResponse } from 'node:http';
 import { Proxy } from 'http-mitm-proxy';
 import { v4 as uuidv4 } from 'uuid';
 import type { AutoResponderEngine } from '../auto-responder/engine';
+import type { BreakpointManager } from '../intercept/breakpoint-manager';
+import {
+  installBodyReplacer,
+  InterceptEngine,
+  mergeHeaderRecord,
+} from '../intercept/engine';
 import {
   buildCaptureEntry,
+  buildBreakpointCaptureEntry,
   CaptureStore,
   extractRequestInfo,
   type PendingCapture,
@@ -14,7 +22,10 @@ import {
   isComposerCaptureHeader,
   stripComposerCaptureHeader,
 } from '../../shared/composer';
+import type { InterceptRule } from '../../shared/types';
 import { installProxyConsoleFilter, isBenignProxyError, uninstallProxyConsoleFilter } from './console-filter';
+
+type ProxyContext = Parameters<Parameters<Proxy['onRequest']>[0]>[0];
 
 export interface ProxyServerOptions {
   port: number;
@@ -23,6 +34,8 @@ export interface ProxyServerOptions {
   maxBodySize: number;
   captureStore: CaptureStore;
   autoResponder: AutoResponderEngine;
+  interceptEngine: InterceptEngine;
+  breakpointManager: BreakpointManager;
   shouldCapture?: (url: string) => boolean;
 }
 
@@ -76,6 +89,37 @@ class CappedBuffer {
   }
 }
 
+function getFullUrl(ctx: ProxyContext): string {
+  const req = ctx.clientToProxyRequest;
+  const method = req.method ?? 'GET';
+  const url = req.url ?? '/';
+  return extractRequestInfo(method, url, req.headers, ctx.isSSL).fullUrl;
+}
+
+function applyRequestRewrite(ctx: ProxyContext, rule: InterceptRule): void {
+  const req = ctx.clientToProxyRequest;
+  if (rule.request?.headers) {
+    mergeHeaderRecord(req.headers, rule.request.headers);
+  }
+  if (rule.request?.body !== undefined && rule.request.body !== '') {
+    installBodyReplacer((handler) => ctx.onRequestData(handler), rule.request.body);
+  }
+}
+
+function applyResponseRewrite(ctx: ProxyContext, rule: InterceptRule): void {
+  const res = ctx.serverToProxyResponse;
+  if (!res) return;
+  if (rule.response?.status !== undefined) {
+    res.statusCode = rule.response.status;
+  }
+  if (rule.response?.headers) {
+    mergeHeaderRecord(res.headers, rule.response.headers);
+  }
+  if (rule.response?.body !== undefined && rule.response.body !== '') {
+    installBodyReplacer((handler) => ctx.onResponseData(handler), rule.response.body);
+  }
+}
+
 export class ProxyServer extends EventEmitter {
   private proxy: Proxy | null = null;
   private options: ProxyServerOptions;
@@ -109,7 +153,6 @@ export class ProxyServer extends EventEmitter {
       this.proxy = proxy;
 
       proxy.onError((ctx, err, kind) => {
-        // Drop any pending capture tied to this connection so it can't leak.
         const id = ctx ? (ctx as { yanshufId?: string }).yanshufId : undefined;
         if (id) this.pending.delete(id);
         if (err && isBenignProxyError(err, kind)) return;
@@ -117,6 +160,24 @@ export class ProxyServer extends EventEmitter {
       });
 
       proxy.use(Proxy.gunzip);
+
+      proxy.onResponse((ctx, callback) => {
+        const fullUrl = getFullUrl(ctx);
+        const rewriteRule = this.options.interceptEngine.findRewrite(fullUrl, 'response');
+        if (rewriteRule) {
+          applyResponseRewrite(ctx, rewriteRule);
+          callback();
+          return;
+        }
+
+        const breakpointRule = this.options.interceptEngine.findBreakpoint(fullUrl, 'response');
+        if (breakpointRule) {
+          this.handleResponseBreakpoint(ctx, breakpointRule);
+          return;
+        }
+
+        callback();
+      });
 
       proxy.onRequest((ctx, callback) => {
         const req = ctx.clientToProxyRequest;
@@ -182,18 +243,29 @@ export class ProxyServer extends EventEmitter {
 
           const entry = buildCaptureEntry(stored, status, responseHeaders, responseBody, maxBodySize);
           if (!this.options.shouldCapture || this.options.shouldCapture(stored.url)) {
-            this.options.captureStore.add(entry);
+            this.options.captureStore.upsert(entry);
             this.emit('capture', entry);
           }
           cb();
         });
 
-        const syncMatch = this.options.autoResponder.findMatch({
-          method,
-          url: info.fullUrl,
-          headers,
-          body: '',
-        });
+        const rewriteRule = this.options.interceptEngine.findRewrite(info.fullUrl, 'request');
+        if (rewriteRule) {
+          applyRequestRewrite(ctx, rewriteRule);
+        }
+
+        const breakpointRule = this.options.interceptEngine.findBreakpoint(info.fullUrl, 'request');
+        if (breakpointRule) {
+          this.handleRequestBreakpoint(ctx, callback, pending, id, requestBody, {
+            method,
+            url: info.fullUrl,
+            headers,
+            rule: breakpointRule,
+          });
+          return;
+        }
+
+        const syncMatch = this.options.autoResponder.findMatch(info.fullUrl);
         if (syncMatch) {
           void this.respondWithRule(ctx, pending, syncMatch, id);
           return;
@@ -225,6 +297,231 @@ export class ProxyServer extends EventEmitter {
     });
   }
 
+  private handleRequestBreakpoint(
+    ctx: ProxyContext,
+    callback: (error?: Error | null) => void,
+    pending: PendingCapture,
+    captureId: string,
+    requestBody: CappedBuffer,
+    input: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      rule: InterceptRule;
+    },
+  ): void {
+    const chunks: Buffer[] = [];
+    const req = ctx.clientToProxyRequest;
+
+    req.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      requestBody.push(chunk);
+    });
+
+    req.once('end', () => {
+      void (async () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const breakpointId = uuidv4();
+        const snapshot = {
+          id: breakpointId,
+          captureId,
+          startedAt: pending.startedAt,
+          ruleId: input.rule.id,
+          ruleName: input.rule.name,
+          phase: 'request' as const,
+          method: input.method,
+          url: input.url,
+          headers: input.headers,
+          body,
+        };
+
+        const breakpointEntry = buildBreakpointCaptureEntry(
+          pending,
+          {
+            breakpointId,
+            phase: 'request',
+            ruleName: input.rule.name,
+          },
+          this.options.maxBodySize,
+        );
+        if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+          this.options.captureStore.upsert(breakpointEntry);
+          this.emit('capture', breakpointEntry);
+        }
+
+        const decision = await this.options.breakpointManager.wait(snapshot);
+
+        if (decision.action === 'abort') {
+          this.pending.delete(captureId);
+          this.options.captureStore.patch(captureId, {
+            status: 502,
+            durationMs: Date.now() - pending.startedAt,
+            awaitingBreakpoint: undefined,
+            server: {
+              url: pending.url,
+              headers: { 'content-type': 'text/plain; charset=utf-8' },
+              body: { size: 0, preview: 'Request aborted at breakpoint' },
+            },
+          });
+          this.emit('capture');
+          this.abortClient(ctx.proxyToClientResponse, 'Request aborted at breakpoint');
+          return;
+        }
+
+        this.options.captureStore.patch(captureId, { awaitingBreakpoint: undefined });
+        this.emit('capture');
+
+        const mods = decision.modifications;
+        if (mods?.headers) {
+          mergeHeaderRecord(req.headers, mods.headers);
+          pending.requestHeaders = headersToRecord(req.headers);
+          this.options.captureStore.patch(captureId, {
+            client: {
+              method: pending.method,
+              url: pending.url,
+              headers: pending.requestHeaders,
+              body: breakpointEntry.client.body,
+            },
+          });
+        }
+
+        const bodyToSend = mods?.body ?? body;
+        ctx.onRequestEnd((_ctx, cb) => {
+          if (bodyToSend && ctx.proxyToServerRequest) {
+            ctx.proxyToServerRequest.write(Buffer.from(bodyToSend, 'utf8'));
+          }
+          cb();
+        });
+
+        callback();
+      })().catch((err) => {
+        this.pending.delete(captureId);
+        this.emit('error', err);
+        this.abortClient(ctx.proxyToClientResponse, 'Breakpoint error');
+      });
+    });
+
+    req.resume();
+  }
+
+  private handleResponseBreakpoint(ctx: ProxyContext, rule: InterceptRule): void {
+    const captureId = (ctx as { yanshufId?: string }).yanshufId;
+    const pending = captureId ? this.pending.get(captureId) : undefined;
+    const serverRes = ctx.serverToProxyResponse;
+    if (!serverRes) return;
+
+    const status = serverRes.statusCode ?? 0;
+    const headers = headersToRecord(serverRes.headers);
+    const chunks: Buffer[] = [];
+
+    serverRes.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    serverRes.once('end', () => {
+      void (async () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const breakpointId = uuidv4();
+        const snapshot = {
+          id: breakpointId,
+          captureId: captureId ?? breakpointId,
+          startedAt: pending?.startedAt ?? Date.now(),
+          ruleId: rule.id,
+          ruleName: rule.name,
+          phase: 'response' as const,
+          method: ctx.clientToProxyRequest.method ?? 'GET',
+          url: getFullUrl(ctx),
+          status,
+          headers,
+          body,
+        };
+
+        if (pending && captureId) {
+          const breakpointEntry = buildBreakpointCaptureEntry(
+            pending,
+            {
+              breakpointId,
+              phase: 'response',
+              ruleName: rule.name,
+              responseStatus: status,
+              responseHeaders: headers,
+              responseBody: body,
+            },
+            this.options.maxBodySize,
+          );
+          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+            this.options.captureStore.upsert(breakpointEntry);
+            this.emit('capture', breakpointEntry);
+          }
+        }
+
+        const decision = await this.options.breakpointManager.wait(snapshot);
+
+        if (decision.action === 'abort') {
+          if (captureId) this.pending.delete(captureId);
+          if (captureId) {
+            this.options.captureStore.patch(captureId, {
+              status: 502,
+              durationMs: pending ? Date.now() - pending.startedAt : 0,
+              awaitingBreakpoint: undefined,
+              server: {
+                url: snapshot.url,
+                headers: { 'content-type': 'text/plain; charset=utf-8' },
+                body: { size: 0, preview: 'Response aborted at breakpoint' },
+              },
+            });
+            this.emit('capture');
+          }
+          this.abortClient(ctx.proxyToClientResponse, 'Response aborted at breakpoint');
+          return;
+        }
+
+        const mods = decision.modifications;
+        const outStatus = mods?.status ?? status;
+        const outHeaders = { ...headers, ...mods?.headers };
+        const outBody = mods?.body ?? body;
+        if (!outHeaders['content-length']) {
+          outHeaders['content-length'] = String(Buffer.byteLength(outBody, 'utf8'));
+        }
+
+        ctx.proxyToClientResponse.writeHead(outStatus, outHeaders);
+        ctx.proxyToClientResponse.end(outBody);
+
+        if (pending && captureId) {
+          this.pending.delete(captureId);
+          const responseBody = new CappedBuffer(this.options.maxBodySize);
+          responseBody.push(Buffer.from(outBody, 'utf8'));
+          const entry = buildCaptureEntry(
+            pending,
+            outStatus,
+            outHeaders,
+            responseBody,
+            this.options.maxBodySize,
+          );
+          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+            this.options.captureStore.upsert(entry);
+            this.emit('capture', entry);
+          }
+        }
+      })().catch((err) => {
+        if (captureId) this.pending.delete(captureId);
+        this.emit('error', err);
+        this.abortClient(ctx.proxyToClientResponse, 'Breakpoint error');
+      });
+    });
+
+    serverRes.resume();
+  }
+
+  private abortClient(res: ServerResponse, message: string): void {
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    if (!res.writableEnded) {
+      res.end(message);
+    }
+  }
+
   private startPendingSweep(): void {
     this.stopPendingSweep();
     this.sweepTimer = setInterval(() => {
@@ -244,7 +541,7 @@ export class ProxyServer extends EventEmitter {
   }
 
   private async respondWithRule(
-    ctx: Parameters<Parameters<Proxy['onRequest']>[0]>[0],
+    ctx: ProxyContext,
     pending: PendingCapture,
     match: ReturnType<AutoResponderEngine['findMatch']> & {},
     id: string,
@@ -270,7 +567,7 @@ export class ProxyServer extends EventEmitter {
         this.options.maxBodySize,
       );
       if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
-        this.options.captureStore.add(entry);
+        this.options.captureStore.upsert(entry);
         this.emit('capture', entry);
       }
     } catch (err) {
@@ -281,6 +578,7 @@ export class ProxyServer extends EventEmitter {
   stop(): Promise<void> {
     return new Promise((resolve) => {
       this.stopPendingSweep();
+      this.options.breakpointManager.clear();
       if (!this.proxy || !this.running) {
         resolve();
         return;

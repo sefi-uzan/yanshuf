@@ -1,26 +1,25 @@
 import { useEffect, useId, useState } from 'react';
 import type { CaptureEntry, CaptureEntrySummary, CertStatus, ProxyStatus } from '../../../shared/types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Search, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import { SHORTCUTS, type ShortcutKey } from '../../../shared/shortcuts';
 import type { DetailMode } from './detailMode';
 import { ComposerWorkspace } from '@/features/composer/ComposerWorkspace';
 import { AutoResponderWorkspace } from '@/features/auto-responder/AutoResponderWorkspace';
+import { BreakpointPanel } from '@/features/intercept/BreakpointPanel';
+import { useBreakpointNavigation } from '@/features/intercept/useBreakpointNavigation';
 import { withCertGate } from '@/lib/cert-gate';
 import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
 
 interface CaptureViewProps {
   searchQuery: string;
-  onSearchChange: (q: string) => void;
-  searchVisible: boolean;
   detailMode: DetailMode;
   composerLoadEntryId?: string | null;
   onComposerLoadHandled?: () => void;
@@ -36,8 +35,6 @@ interface CaptureViewProps {
 
 export function CaptureView({
   searchQuery,
-  onSearchChange,
-  searchVisible,
   detailMode,
   composerLoadEntryId,
   onComposerLoadHandled,
@@ -75,12 +72,19 @@ export function CaptureView({
       return;
     }
     void window.yanshuf.capture.get(selectedId).then((entry) => setSelectedEntry(entry ?? null));
-  }, [selectedId]);
+  }, [selectedId, entries]);
 
   const handleSelectEntry = (id: string) => {
     setSelectedId(id);
     onCaptureEntrySelect?.();
   };
+
+  const { handleBreakpointResolved } = useBreakpointNavigation({
+    entries,
+    selectedId,
+    onSelect: handleSelectEntry,
+    onNavigateToCapture: onCaptureEntrySelect,
+  });
 
   const toggleProxy = async () => {
     try {
@@ -126,18 +130,6 @@ export function CaptureView({
 
   return (
     <div className="flex h-full flex-col">
-      {searchVisible && (
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            autoFocus
-            placeholder="Search URL, host, method, status…"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-8"
-          />
-        </div>
-      )}
       {detailMode === 'capture' && selectedEntry && (
         <div className="flex items-center gap-2 border-b bg-muted/20 px-3 py-1.5">
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
@@ -160,7 +152,9 @@ export function CaptureView({
         </Panel>
         <Separator className="w-1 bg-border transition-colors hover:bg-primary/30" />
         <Panel defaultSize={65} minSize={30}>
-          {detailMode === 'capture' && (
+          {detailMode === 'capture' && selectedEntry?.awaitingBreakpoint ? (
+            <BreakpointPanel entry={selectedEntry} onResolved={handleBreakpointResolved} />
+          ) : detailMode === 'capture' && (
             <Group orientation="horizontal" className="h-full min-h-0">
               <Panel defaultSize={50} minSize={25}>
                 <RequestPane entry={selectedEntry} />

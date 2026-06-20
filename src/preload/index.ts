@@ -5,10 +5,12 @@ import type {
   CaptureEntry,
   CaptureEntrySummary,
   CertStatus,
+  BreakpointSnapshot,
   ComposedEntry,
-  ComposerCollection,
   ComposerRequest,
   ComposerResponse,
+  InterceptModifications,
+  InterceptRule,
   MenuAction,
   ProxyStatus,
 } from '../shared/types';
@@ -43,12 +45,17 @@ export interface YanshufAPI {
     get: () => Promise<AutoResponderRule[]>;
     save: (rules: AutoResponderRule[]) => Promise<AutoResponderRule[]>;
   };
+  intercept: {
+    getRules: () => Promise<InterceptRule[]>;
+    saveRules: (rules: InterceptRule[]) => Promise<InterceptRule[]>;
+    onBreakpoint: (callback: (snapshot: BreakpointSnapshot) => void) => () => void;
+    continueBreakpoint: (id: string, modifications?: InterceptModifications) => Promise<void>;
+    abortBreakpoint: (id: string) => Promise<void>;
+  };
   composer: {
     send: (req: ComposerRequest) => Promise<ComposerResponse>;
     parseCurl: (curl: string) => Promise<ComposerRequest>;
     exportCurl: (req: ComposerRequest) => Promise<string>;
-    getCollections: () => Promise<ComposerCollection[]>;
-    saveCollections: (collections: ComposerCollection[]) => Promise<void>;
     getComposed: () => Promise<ComposedEntry[]>;
     saveComposed: (entries: ComposedEntry[]) => Promise<void>;
   };
@@ -97,12 +104,22 @@ const api: YanshufAPI = {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.RULES_GET),
     save: (rules) => ipcRenderer.invoke(IPC_CHANNELS.RULES_SAVE, rules),
   },
+  intercept: {
+    getRules: () => ipcRenderer.invoke(IPC_CHANNELS.INTERCEPT_GET),
+    saveRules: (rules) => ipcRenderer.invoke(IPC_CHANNELS.INTERCEPT_SAVE, rules),
+    onBreakpoint: (callback) => {
+      const handler = (_: Electron.IpcRendererEvent, snapshot: BreakpointSnapshot) => callback(snapshot);
+      ipcRenderer.on(IPC_CHANNELS.BREAKPOINT_HIT, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.BREAKPOINT_HIT, handler);
+    },
+    continueBreakpoint: (id, modifications) =>
+      ipcRenderer.invoke(IPC_CHANNELS.BREAKPOINT_CONTINUE, id, modifications),
+    abortBreakpoint: (id) => ipcRenderer.invoke(IPC_CHANNELS.BREAKPOINT_ABORT, id),
+  },
   composer: {
     send: (req) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_SEND, req),
     parseCurl: (curl) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_PARSE_CURL, curl),
     exportCurl: (req) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_EXPORT_CURL, req),
-    getCollections: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COLLECTIONS_GET),
-    saveCollections: (collections) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COLLECTIONS_SAVE, collections),
     getComposed: () => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COMPOSED_GET),
     saveComposed: (entries) => ipcRenderer.invoke(IPC_CHANNELS.COMPOSER_COMPOSED_SAVE, entries),
   },

@@ -9,7 +9,7 @@ describe('AutoResponderEngine', () => {
       name: 'First',
       enabled: true,
       order: 0,
-      match: { urlRegex: 'api\\.example\\.com', method: 'GET' },
+      match: { urlRegex: 'api\\.example\\.com' },
       response: { status: 200, headers: {}, body: { type: 'inline', content: 'first' } },
     },
     {
@@ -17,7 +17,7 @@ describe('AutoResponderEngine', () => {
       name: 'Second',
       enabled: true,
       order: 1,
-      match: { urlRegex: '.*', method: 'GET' },
+      match: { urlRegex: '.*' },
       response: { status: 404, headers: {}, body: { type: 'inline', content: 'second' } },
     },
   ];
@@ -25,25 +25,30 @@ describe('AutoResponderEngine', () => {
   it('returns first matching rule in order', () => {
     const engine = new AutoResponderEngine();
     engine.setRules(rules);
-    const match = engine.findMatch({
-      method: 'GET',
-      url: 'https://api.example.com/users',
-      headers: {},
-      body: '',
-    });
+    const match = engine.findMatch('https://api.example.com/users');
     expect(match?.id).toBe('1');
   });
 
   it('skips disabled rules', () => {
     const engine = new AutoResponderEngine();
     engine.setRules(rules.map((r) => (r.id === '1' ? { ...r, enabled: false } : r)));
-    const match = engine.findMatch({
-      method: 'GET',
-      url: 'https://api.example.com/users',
-      headers: {},
-      body: '',
-    });
+    const match = engine.findMatch('https://api.example.com/users');
     expect(match?.id).toBe('2');
+  });
+
+  it('does not match when url regex is empty', () => {
+    const engine = new AutoResponderEngine();
+    engine.setRules([
+      {
+        id: 'empty',
+        name: 'Empty',
+        enabled: true,
+        order: 0,
+        match: { urlRegex: '' },
+        response: { status: 200, headers: {}, body: { type: 'inline', content: 'ok' } },
+      },
+    ]);
+    expect(engine.findMatch('https://example.com')).toBeUndefined();
   });
 
   it('applies delay before returning response', async () => {
