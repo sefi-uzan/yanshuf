@@ -3,19 +3,32 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 import type { IntegrationPrerequisites } from '@yanshuf/shared';
 import { INTEGRATION_MIN_NODE_VERSION } from '@yanshuf/shared';
 
+type PrerequisitesVariant = 'stack' | 'inline';
+
 interface PrerequisitesStripProps {
   prereqs: IntegrationPrerequisites;
+  variant?: PrerequisitesVariant;
+  /** @deprecated use variant="inline" */
   compact?: boolean;
   onOpenCertificate?: () => void;
 }
 
 export function PrerequisitesStrip({
   prereqs,
+  variant,
   compact = false,
   onOpenCertificate,
 }: PrerequisitesStripProps) {
+  const resolvedVariant = variant ?? (compact ? 'inline' : 'stack');
+
+  if (resolvedVariant === 'inline') {
+    return (
+      <InlinePrerequisitesStrip prereqs={prereqs} onOpenCertificate={onOpenCertificate} />
+    );
+  }
+
   return (
-    <div className={cn('space-y-2', compact ? 'text-xs' : 'text-sm')}>
+    <div className="space-y-2 text-sm">
       <PrereqRow
         ok={prereqs.node.ok}
         label="Node.js"
@@ -45,6 +58,80 @@ export function PrerequisitesStrip({
           ) : undefined
         }
       />
+    </div>
+  );
+}
+
+function InlinePrerequisitesStrip({
+  prereqs,
+  onOpenCertificate,
+}: {
+  prereqs: IntegrationPrerequisites;
+  onOpenCertificate?: () => void;
+}) {
+  const nodeDetail = prereqs.node.ok
+    ? prereqs.node.version
+    : prereqs.node.message ?? `Node ${INTEGRATION_MIN_NODE_VERSION}+`;
+  const certDetail = prereqs.cert.ok
+    ? 'Trusted'
+    : prereqs.cert.message ?? 'Not trusted';
+
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-md border px-3 py-2 text-xs',
+        prereqs.allMet
+          ? 'border-border/60 bg-muted/30 text-muted-foreground'
+          : 'border-amber-500/25 bg-amber-500/[0.04]',
+      )}
+    >
+      <InlinePrereqChip ok={prereqs.node.ok} label="Node" detail={nodeDetail} />
+      <span className="hidden h-3 w-px bg-border sm:block" aria-hidden />
+      <InlinePrereqChip
+        ok={prereqs.cert.ok}
+        label="Certificate"
+        detail={certDetail}
+        action={
+          !prereqs.cert.ok && onOpenCertificate ? (
+            <button
+              type="button"
+              className="font-medium text-teal-600 underline-offset-2 hover:underline dark:text-teal-400"
+              onClick={onOpenCertificate}
+            >
+              Fix
+            </button>
+          ) : undefined
+        }
+      />
+    </div>
+  );
+}
+
+function InlinePrereqChip({
+  ok,
+  label,
+  detail,
+  action,
+}: {
+  ok: boolean;
+  label: string;
+  detail?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {ok ? (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+      )}
+      <span className={cn('font-medium', ok ? 'text-foreground/80' : 'text-amber-900 dark:text-amber-100')}>
+        {label}
+      </span>
+      {detail && (
+        <span className="truncate text-muted-foreground">{detail}</span>
+      )}
+      {action}
     </div>
   );
 }

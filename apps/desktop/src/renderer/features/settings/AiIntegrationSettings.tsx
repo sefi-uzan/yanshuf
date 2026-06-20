@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   IntegrationClient,
   IntegrationClientStatus,
+  IntegrationSkillStatus,
   IntegrationStatusResult,
   IntegrationUninstallPayload,
 } from '@yanshuf/shared';
@@ -25,6 +26,7 @@ import { ChevronDown, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { CLIENT_LABEL } from '@yanshuf/shared';
 import { PrerequisitesStrip } from '../integration/PrerequisitesStrip';
+import { SettingsAlert, SettingsSection } from './SettingsLayout';
 import { notifyActionFailed } from '@/lib/toast-actions';
 
 interface AiIntegrationSettingsProps {
@@ -163,27 +165,24 @@ export function AiIntegrationSettings({
   }
 
   return (
-    <div className="space-y-6">
-      {status.prerequisites && (
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Prerequisites</h3>
-          <PrerequisitesStrip
-            prereqs={status.prerequisites}
-            compact
-            onOpenCertificate={onOpenCertificate}
+    <div className="space-y-5">
+      <SettingsSection
+        title="Integrations"
+        description="Connect Cursor or Claude Code via MCP."
+        actions={
+          <IntegrationActionsMenu
+            hasAnyInstall={status.hasAnyInstall}
+            busy={busy}
+            onOpenOnboarding={onOpenOnboarding}
+            onInstallProject={(client) => void handleInstallProject(client)}
           />
-        </section>
-      )}
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold">Integration status</h3>
-            <p className="text-xs text-muted-foreground">
-              Bundle {status.manifest.bundleVersion}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            Bundle {status.manifest.bundleVersion}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={status.status} />
             <Button
               variant="ghost"
@@ -196,96 +195,61 @@ export function AiIntegrationSettings({
             </Button>
           </div>
         </div>
+      </SettingsSection>
 
-        {status.status === 'update_available' && (
-          <div
-            ref={updatePanelRef}
-            className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm"
-          >
-            <p className="text-amber-800 dark:text-amber-200">Updates available for one or more components.</p>
-            <Button
-              className="mt-2"
-              size="sm"
-              onClick={() => void handleUpdateAll()}
-              disabled={updating || busy}
-            >
-              {updating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating…
-                </>
-              ) : (
-                'Update all'
-              )}
-            </Button>
-          </div>
-        )}
+      {status.prerequisites && (
+        <PrerequisitesStrip
+          prereqs={status.prerequisites}
+          variant="inline"
+          onOpenCertificate={onOpenCertificate}
+        />
+      )}
 
-        {status.clients.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No AI integrations configured yet. Set up Cursor or Claude Code to get started.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {status.clients.map((clientStatus) => (
-              <ClientIntegrationCard
-                key={clientStatus.client}
-                clientStatus={clientStatus}
-                busy={busy}
-                onUpdate={() => void handleUpdateClient(clientStatus.client)}
-                onUninstall={(payload, title, description) =>
-                  setPendingUninstall({ ...payload, title, description })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {!status.hasAnyInstall ? (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">Set up</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => onOpenOnboarding('cursor')} disabled={busy}>
-              Set up Cursor
-            </Button>
-            <Button variant="outline" onClick={() => onOpenOnboarding('claude-code')} disabled={busy}>
-              Set up Claude Code
-            </Button>
-          </div>
-        </section>
-      ) : (
-        <section>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={busy}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add integration
-                <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+      {status.status === 'update_available' && (
+        <div ref={updatePanelRef}>
+          <SettingsAlert
+            variant="warning"
+            action={
+              <Button
+                size="sm"
+                onClick={() => void handleUpdateAll()}
+                disabled={updating || busy}
+              >
+                {updating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating…
+                  </>
+                ) : (
+                  'Update all'
+                )}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => onOpenOnboarding('cursor')}>
-                Set up Cursor…
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onOpenOnboarding('claude-code')}>
-                Set up Claude Code…
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>Add skills to project</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => void handleInstallProject('cursor')}>
-                    For Cursor…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void handleInstallProject('claude-code')}>
-                    For Claude Code…
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </section>
+            }
+          >
+            <p>Updates available for one or more components.</p>
+          </SettingsAlert>
+        </div>
+      )}
+
+      {status.clients.length === 0 ? (
+        <EmptyIntegrationsState
+          busy={busy}
+          onOpenOnboarding={onOpenOnboarding}
+        />
+      ) : (
+        <div className="space-y-3">
+          {status.clients.map((clientStatus) => (
+            <ClientIntegrationCard
+              key={clientStatus.client}
+              clientStatus={clientStatus}
+              busy={busy}
+              onUpdate={() => void handleUpdateClient(clientStatus.client)}
+              onUninstall={(payload, title, description) =>
+                setPendingUninstall({ ...payload, title, description })
+              }
+            />
+          ))}
+        </div>
       )}
 
       <UninstallConfirmDialog
@@ -296,6 +260,88 @@ export function AiIntegrationSettings({
         onConfirm={() => void confirmUninstall()}
         onCancel={() => setPendingUninstall(null)}
       />
+    </div>
+  );
+}
+
+function IntegrationActionsMenu({
+  hasAnyInstall,
+  busy,
+  onOpenOnboarding,
+  onInstallProject,
+}: {
+  hasAnyInstall: boolean;
+  busy: boolean;
+  onOpenOnboarding: (client: IntegrationClient) => void;
+  onInstallProject: (client: IntegrationClient) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" disabled={busy}>
+          <Plus className="mr-1.5 h-4 w-4" />
+          {hasAnyInstall ? 'Add' : 'Set up'}
+          <ChevronDown className="ml-1.5 h-4 w-4 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onOpenOnboarding('cursor')}>
+          {hasAnyInstall ? 'Set up Cursor…' : 'Cursor'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onOpenOnboarding('claude-code')}>
+          {hasAnyInstall ? 'Set up Claude Code…' : 'Claude Code'}
+        </DropdownMenuItem>
+        {hasAnyInstall && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Add skills to project</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => onInstallProject('cursor')}>
+                  For Cursor…
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onInstallProject('claude-code')}>
+                  For Claude Code…
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function EmptyIntegrationsState({
+  busy,
+  onOpenOnboarding,
+}: {
+  busy: boolean;
+  onOpenOnboarding: (client: IntegrationClient) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-8 text-center">
+      <p className="text-sm text-muted-foreground">
+        No AI integrations configured yet.
+      </p>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onOpenOnboarding('cursor')}
+          disabled={busy}
+        >
+          Set up Cursor
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onOpenOnboarding('claude-code')}
+          disabled={busy}
+        >
+          Set up Claude Code
+        </Button>
+      </div>
     </div>
   );
 }
@@ -359,7 +405,7 @@ function ClientIntegrationCard({
         )}
         {(clientStatus.hook.configured || clientStatus.hook.tracked) && (
           <ComponentRow
-            name="SessionEnd hook"
+            name="Hook - SessionEnd"
             path={clientStatus.hook.configPath ?? clientStatus.hook.path}
             configured={clientStatus.hook.configured}
             outdated={false}
@@ -376,7 +422,7 @@ function ClientIntegrationCard({
         {clientStatus.skills.map((skill) => (
           <ComponentRow
             key={skill.id}
-            name={`Skill · ${skill.kind}${skill.repoRoot ? ' project' : ''}`}
+            name={formatSkillLabel(skill)}
             path={skill.path}
             configured={skill.configured}
             outdated={skill.outdated}
@@ -393,6 +439,18 @@ function ClientIntegrationCard({
       </ul>
     </div>
   );
+}
+
+function formatSkillLabel(skill: IntegrationSkillStatus): string {
+  if (skill.kind === 'personal') {
+    return 'Skill personal (applies to all projects)';
+  }
+
+  const projectName = skill.repoRoot
+    ? skill.repoRoot.replace(/\/+$/, '').split('/').pop() ?? skill.repoRoot
+    : 'project';
+
+  return `Skill ${projectName}`;
 }
 
 function ComponentRow({

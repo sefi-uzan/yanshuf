@@ -94,7 +94,7 @@ export function SessionList({
       <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
         <div
           className={cn(
-            'sticky top-0 z-10 grid gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground',
+            'sticky top-0 z-10 grid gap-2 border-b bg-background px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground',
             SESSION_LIST_GRID,
           )}
         >
