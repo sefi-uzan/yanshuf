@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CaptureFilterMode, CertStatus } from '@yanshuf/shared';
-import { DEFAULT_SETTINGS , SHORTCUTS, formatShortcutParts } from '@yanshuf/shared';
-import { Button , Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle , Input , Separator , Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
-import { Kbd, useShortcutHints } from '@/components/shortcut-hints';
+import { DEFAULT_SETTINGS } from '@yanshuf/shared';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
+import { useShortcutHints } from '@/components/shortcut-hints';
 import { cn } from '@yanshuf/ui/lib/utils';
-import { Loader2, Bot, Shield, SlidersHorizontal } from 'lucide-react';
-import { CaptureFilterFields } from './CaptureFilterFields';
+import { Bot, Shield, SlidersHorizontal } from 'lucide-react';
 import { CertificateSettings } from './CertificateSettings';
 import { AiIntegrationSettings } from './AiIntegrationSettings';
+import { GeneralSettings } from './GeneralSettings';
+import { GeneralSettingsFooter } from './GeneralSettingsFooter';
 import { IntegrationOnboarding } from '../integration/IntegrationOnboarding';
-import { SettingsFooter, SettingsSection } from './SettingsLayout';
 import { clearCapturedRequests, notifyActionFailed, notifySaved } from '@/lib/toast-actions';
 import type { IntegrationClient } from '@yanshuf/shared';
 
@@ -217,82 +217,20 @@ export function SettingsPanel({
               <h2 className="text-sm font-semibold">{activeNav?.label}</h2>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <TabsContent value="general" className="mt-0 space-y-6 focus-visible:outline-none">
-                <div className="grid grid-cols-3 gap-3">
-                  <label htmlFor="proxy-port" className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Port</span>
-                    <Input
-                      id="proxy-port"
-                      type="number"
-                      min={1024}
-                      max={65535}
-                      className="h-8"
-                      value={port}
-                      onChange={(e) => setPort(Number(e.target.value))}
-                    />
-                  </label>
-                  <label htmlFor="ring-buffer-size" className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Max entries</span>
-                    <Input
-                      id="ring-buffer-size"
-                      type="number"
-                      min={100}
-                      step={100}
-                      className="h-8"
-                      value={ringBufferSize}
-                      onChange={(e) => setRingBufferSize(Number(e.target.value))}
-                    />
-                  </label>
-                  <label htmlFor="max-body-size" className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Max body size (MB)</span>
-                    <Input
-                      id="max-body-size"
-                      type="number"
-                      min={1}
-                      step={1}
-                      className="h-8"
-                      value={maxBodySizeMb}
-                      onChange={(e) => setMaxBodySizeMb(Number(e.target.value))}
-                    />
-                  </label>
-                </div>
-
-                <Separator />
-
-                <SettingsSection title="Filters">
-                  <CaptureFilterFields
-                    filterMode={filterMode}
-                    filterUrls={filterUrls}
-                    onFilterModeChange={setFilterMode}
-                    onFilterUrlsChange={setFilterUrls}
-                  />
-                </SettingsSection>
-
-                <SettingsFooter>
-                  <Button variant="outline" onClick={reset} disabled={!isDirty || saving}>
-                    Reset
-                  </Button>
-                  <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-                    Cancel
-                  </Button>
-                  <Button onClick={() => void save()} disabled={!isDirty || saving}>
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving…
-                      </>
-                    ) : hintsVisible ? (
-                      <span className="inline-flex items-center gap-0.5" aria-hidden>
-                        {formatShortcutParts(SHORTCUTS.saveSettings.keys).map((part, index) => (
-                          <Kbd key={`${part}-${index}`}>{part}</Kbd>
-                        ))}
-                      </span>
-                    ) : (
-                      'Save'
-                    )}
-                  </Button>
-                </SettingsFooter>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              <TabsContent value="general" className="mt-0 focus-visible:outline-none">
+                <GeneralSettings
+                  port={port}
+                  ringBufferSize={ringBufferSize}
+                  maxBodySizeMb={maxBodySizeMb}
+                  filterMode={filterMode}
+                  filterUrls={filterUrls}
+                  onPortChange={setPort}
+                  onRingBufferSizeChange={setRingBufferSize}
+                  onMaxBodySizeMbChange={setMaxBodySizeMb}
+                  onFilterModeChange={setFilterMode}
+                  onFilterUrlsChange={setFilterUrls}
+                />
               </TabsContent>
 
               <TabsContent value="certificate" className="mt-0 focus-visible:outline-none">
@@ -315,6 +253,17 @@ export function SettingsPanel({
                 />
               </TabsContent>
             </div>
+
+            {tab === 'general' && (
+              <GeneralSettingsFooter
+                isDirty={isDirty}
+                saving={saving}
+                hintsVisible={hintsVisible}
+                onReset={reset}
+                onCancel={() => onOpenChange(false)}
+                onSave={save}
+              />
+            )}
           </div>
         </Tabs>
 
