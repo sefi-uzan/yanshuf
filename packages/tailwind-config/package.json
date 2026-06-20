@@ -1,0 +1,13 @@
+{
+  "name": "@yanshuf/tailwind-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": "./tailwind.config.js"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19",
+    "tailwindcss-animate": "^1.0.7"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "@yanshuf/typescript-config/react.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/*"]
+    }
+  },
+  "include": ["src/**/*", "forge.env.d.ts", "tests/**/*"]
+}
