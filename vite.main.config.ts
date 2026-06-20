@@ -9,7 +9,12 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['electron'],
+      external: [
+        'electron',
+        // http-mitm-proxy → ws optional peer deps (bufferutil) break when bundled
+        'http-mitm-proxy',
+        'ws',
+      ],
     },
   },
 });
