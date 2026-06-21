@@ -98,8 +98,8 @@ export class McpApiServer {
         return;
       }
 
-      if (method === 'POST' && url.pathname === '/capture/clear') {
-        sendJson(res, 200, await this.handlers.clearSession());
+      if (method === 'POST' && url.pathname === '/session/cleanup') {
+        sendJson(res, 200, await this.handlers.cleanupSession());
         return;
       }
 

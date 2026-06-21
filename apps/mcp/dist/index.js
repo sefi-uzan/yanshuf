@@ -21182,8 +21182,8 @@ var YanshufApiClient = class {
   toggleCapture() {
     return this.request("POST", "/capture/toggle");
   }
-  clearSession() {
-    return this.request("POST", "/capture/clear");
+  cleanupSession() {
+    return this.request("POST", "/session/cleanup");
   }
   searchCaptures(params) {
     const q = new URLSearchParams();
@@ -21279,12 +21279,12 @@ function registerTools(server, client) {
     async () => textResult(await client.toggleCapture())
   );
   server.registerTool(
-    "yanshuf_clear_session",
+    "yanshuf_cleanup_session",
     {
-      description: "Clear all captured requests. Returns entryCount after clear (0). Call when the user says debugging is done.",
+      description: "End a debugging session: clear all captures and disable all mock/intercept rules atomically. Returns entryCount (0), disabledMockCount, and disabledInterceptCount. Call when the user says debugging is done.",
       inputSchema: {}
     },
-    async () => textResult(await client.clearSession())
+    async () => textResult(await client.cleanupSession())
   );
   server.registerTool(
     "yanshuf_search_captures",

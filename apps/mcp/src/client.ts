@@ -96,8 +96,12 @@ export class YanshufApiClient {
     return this.request<Record<string, unknown>>('POST', '/capture/toggle');
   }
 
-  clearSession() {
-    return this.request<{ entryCount: number }>('POST', '/capture/clear');
+  cleanupSession() {
+    return this.request<{
+      entryCount: number;
+      disabledMockCount: number;
+      disabledInterceptCount: number;
+    }>('POST', '/session/cleanup');
   }
 
   searchCaptures(params: Record<string, string | number | undefined>) {

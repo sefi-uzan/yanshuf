@@ -29,8 +29,10 @@ export interface YanshufStatus {
   mcpApiPort: number;
 }
 
-export interface CaptureClearResult {
+export interface SessionCleanupResult {
   entryCount: number;
+  disabledMockCount: number;
+  disabledInterceptCount: number;
 }
 
 export interface CaptureSearchParams {
@@ -106,7 +108,7 @@ export interface BreakpointWaitResult {
 export interface McpApiHandlers {
   getStatus: () => Promise<YanshufStatus>;
   toggleCapture: () => Promise<YanshufStatus>;
-  clearSession: () => Promise<CaptureClearResult>;
+  cleanupSession: () => Promise<SessionCleanupResult>;
   searchCaptures: (params: CaptureSearchParams) => Promise<CaptureEntrySummary[]>;
   getCapture: (id: string) => Promise<CaptureEntry | undefined>;
   waitForCapture: (params: CaptureWaitParams) => Promise<CaptureWaitResult>;

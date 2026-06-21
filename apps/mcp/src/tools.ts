@@ -30,13 +30,13 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
   );
 
   server.registerTool(
-    'yanshuf_clear_session',
+    'yanshuf_cleanup_session',
     {
       description:
-        'Clear all captured requests. Returns entryCount after clear (0). Call when the user says debugging is done.',
+        'End a debugging session: clear all captures and disable all mock/intercept rules atomically. Returns entryCount (0), disabledMockCount, and disabledInterceptCount. Call when the user says debugging is done.',
       inputSchema: {},
     },
-    async () => textResult(await client.clearSession()),
+    async () => textResult(await client.cleanupSession()),
   );
 
   server.registerTool(

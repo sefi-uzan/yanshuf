@@ -9,4 +9,4 @@
 5. Trigger the API call in the target app.
 6. `yanshuf_search_captures(url=...)` — check `matchedRuleId` on the summary confirms the mock fired.
 7. `yanshuf_get_capture` for response details if needed.
-8. When done: `yanshuf_clear_session`.
+8. When done: `yanshuf_cleanup_session`.

@@ -17,7 +17,7 @@ if [[ -z "${TOKEN:-}" ]]; then
   exit 0
 fi
 
-curl -sf -X POST "http://127.0.0.1:${PORT}/capture/clear" \
+curl -sf -X POST "http://127.0.0.1:${PORT}/session/cleanup" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   >/dev/null 2>&1 || true

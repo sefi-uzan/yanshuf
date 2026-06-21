@@ -16,7 +16,7 @@ function mockHandlers(overrides: Partial<McpApiHandlers> = {}): McpApiHandlers {
   return {
     getStatus: async () => status,
     toggleCapture: async () => ({ ...status, capturing: true }),
-    clearSession: async () => ({ entryCount: 0 }),
+    cleanupSession: async () => ({ entryCount: 0, disabledMockCount: 0, disabledInterceptCount: 0 }),
     searchCaptures: async () => [],
     getCapture: async () => undefined,
     waitForCapture: async () => ({ timedOut: true }),
@@ -104,11 +104,11 @@ describe('McpApiServer', () => {
     expect(res.body).toMatchObject({ capturing: false, certTrusted: true });
   });
 
-  it('clears session', async () => {
+  it('cleans up session', async () => {
     server = new McpApiServer(TOKEN, mockHandlers());
     port = await server.start(0);
-    const res = await request(port, '/capture/clear', { method: 'POST', token: TOKEN });
+    const res = await request(port, '/session/cleanup', { method: 'POST', token: TOKEN });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ entryCount: 0 });
+    expect(res.body).toEqual({ entryCount: 0, disabledMockCount: 0, disabledInterceptCount: 0 });
   });
 });
