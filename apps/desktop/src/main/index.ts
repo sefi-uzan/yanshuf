@@ -32,8 +32,13 @@ import {
   installSkill,
   installSessionEndHook,
   type IntegrationClient,
-  type SkillInstallTarget,
 } from './mcp-api/integration';
+import { checkPrerequisites } from './mcp-api/integration-prerequisites';
+import {
+  createIntegrationRegistry,
+  type IntegrationRegistryService,
+} from './mcp-api/integration-registry';
+import type { IntegrationUninstallPayload, IntegrationVerifyParams, SkillInstallTarget } from '@yanshuf/shared';
 
 // Only one instance may own the proxy port; focus the existing window instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -57,6 +62,19 @@ let composerService: ComposerService;
 let mcpWaitQueue: McpWaitQueue;
 let mcpApiServer: McpApiServer | null = null;
 let mcpApiPort = 9473;
+let integrationRegistry: IntegrationRegistryService;
+
+async function checkMcpApiReachable(): Promise<boolean> {
+  try {
+    const { token } = await ensureMcpAuth(app.getPath('userData'));
+    const res = await fetch(`http://127.0.0.1:${mcpApiPort}/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function appIconPath(): string {
   const base = app.isPackaged
@@ -84,6 +102,7 @@ function buildShouldCapture(): (url: string) => boolean {
 async function loadState(): Promise<void> {
   store = new JsonFileStore(path.join(app.getPath('userData'), 'data'));
   await store.init();
+  integrationRegistry = createIntegrationRegistry(store);
 
   const stored = await store.read<Partial<AppSettings>>('settings.json', {});
   settings = {
@@ -564,21 +583,56 @@ function registerIpc(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.MCP_INTEGRATION_VERIFY,
-    async (_e, client: IntegrationClient, target: SkillInstallTarget) => {
+    async (_e, client: IntegrationClient, params: IntegrationVerifyParams) => {
       const certResult = await certManager.verifyTrust();
-      let apiReachable = false;
-      try {
-        const { token } = await ensureMcpAuth(app.getPath('userData'));
-        const res = await fetch(`http://127.0.0.1:${mcpApiPort}/status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        apiReachable = res.ok;
-      } catch {
-        apiReachable = false;
-      }
-      return verifyIntegration(client, target, apiReachable, certResult.trusted);
+      const apiReachable = await checkMcpApiReachable();
+      return verifyIntegration(client, params, apiReachable, certResult.trusted);
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.MCP_INTEGRATION_PREREQUISITES, async () => {
+    const certResult = await certManager.verifyTrust();
+    return checkPrerequisites(certResult.trusted);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MCP_INTEGRATION_STATUS, async () => {
+    const certResult = await certManager.verifyTrust();
+    const apiReachable = await checkMcpApiReachable();
+    return integrationRegistry.getStatus(certResult.trusted, apiReachable);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MCP_INTEGRATION_REGISTRY_GET, () =>
+    integrationRegistry.loadRegistry(),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_RECORD,
+    async (
+      _e,
+      client: IntegrationClient,
+      targets: SkillInstallTarget[],
+      verifyOk: boolean,
+    ) => integrationRegistry.recordInstall(client, targets, verifyOk),
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_UPDATE,
+    async (_e, payload?: { recordIds?: string[]; client?: IntegrationClient }) =>
+      integrationRegistry.updateAllInstalls(payload ?? {}),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.MCP_INTEGRATION_REMOVE, async (_e, recordId: string) => {
+    await integrationRegistry.removeInstall(recordId);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.MCP_INTEGRATION_UNINSTALL,
+    async (_e, payload: IntegrationUninstallPayload) => integrationRegistry.uninstall(payload),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.MCP_INTEGRATION_DISMISS_PROMPT, async () => {
+    await integrationRegistry.dismissPostCertPrompt();
+  });
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_PICK_DIRECTORY, async (_e, options?: { title?: string }) => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow;

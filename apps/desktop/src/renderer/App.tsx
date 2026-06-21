@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CaptureView } from '@/features/capture/CaptureView';
 import type { DetailMode } from '@/features/capture/detailMode';
 import { CertOnboarding } from '@/features/certificate/CertOnboarding';
+import { PostCertIntegrationPrompt } from '@/features/integration/PostCertIntegrationPrompt';
+import { IntegrationOnboarding } from '@/features/integration/IntegrationOnboarding';
 import { GuidedTour } from '@/features/guided-tour/GuidedTour';
 import { SettingsPanel, type SettingsTab } from '@/features/settings/SettingsPanels';
 import { AppHeader } from '@/components/AppHeader';
 import { withCertGate } from '@/lib/cert-gate';
 import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
-import type { CertStatus } from '@yanshuf/shared';
+import type { CertStatus, IntegrationAggregateStatus, IntegrationClient } from '@yanshuf/shared';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -17,8 +19,14 @@ export default function App() {
   const [rulesLoadEntryId, setRulesLoadEntryId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [focusAiUpdates, setFocusAiUpdates] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [certStatus, setCertStatus] = useState<CertStatus | null>(null);
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationAggregateStatus>('not_installed');
+  const [integrationStatusNonce, setIntegrationStatusNonce] = useState(0);
+  const [postCertPromptOpen, setPostCertPromptOpen] = useState(false);
+  const [integrationOnboardingClient, setIntegrationOnboardingClient] =
+    useState<IntegrationClient | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [proxyStatusNonce, setProxyStatusNonce] = useState(0);
   const firstRunChecked = useRef(false);
@@ -27,24 +35,42 @@ export default function App() {
     void window.yanshuf.cert.status().then(setCertStatus);
   }, []);
 
+  const refreshIntegrationStatus = useCallback(() => {
+    void window.yanshuf.integration.status().then((s) => {
+      setIntegrationStatus(s.status);
+      setIntegrationStatusNonce((n) => n + 1);
+    });
+  }, []);
+
   const openCertOnboarding = useCallback(() => {
     setOnboardingOpen(true);
   }, []);
 
   const openSettings = useCallback(() => {
     setSettingsTab('general');
+    setFocusAiUpdates(false);
+    setSettingsOpen(true);
+  }, []);
+
+  const openAiSettings = useCallback((focusUpdates = false) => {
+    setSettingsTab('ai');
+    setFocusAiUpdates(focusUpdates);
     setSettingsOpen(true);
   }, []);
 
   const toggleSettings = useCallback(() => {
     setSettingsOpen((open) => {
-      if (!open) setSettingsTab('general');
+      if (!open) {
+        setSettingsTab('general');
+        setFocusAiUpdates(false);
+      }
       return !open;
     });
   }, []);
 
   const openCertificateSettings = useCallback(() => {
     setSettingsTab('certificate');
+    setFocusAiUpdates(false);
     setSettingsOpen(true);
   }, []);
 
@@ -62,6 +88,14 @@ export default function App() {
     await window.yanshuf.settings.save({ ...current, guidedTourCompleted: true });
   }, []);
 
+  const maybeShowPostCertPrompt = useCallback(async () => {
+    const status = await window.yanshuf.integration.status();
+    const registry = await window.yanshuf.integration.getRegistry();
+    if (!status.hasAnyInstall && !registry.postCertPromptDismissed) {
+      setPostCertPromptOpen(true);
+    }
+  }, []);
+
   const handleCertOnboardingComplete = useCallback(async () => {
     try {
       await window.yanshuf.systemProxy.enable();
@@ -73,7 +107,8 @@ export default function App() {
     if (!settings.guidedTourCompleted) {
       setTourOpen(true);
     }
-  }, []);
+    void maybeShowPostCertPrompt();
+  }, [maybeShowPostCertPrompt]);
 
   useEffect(() => {
     void window.yanshuf.cert.status().then((status) => {
@@ -85,7 +120,8 @@ export default function App() {
         }
       }
     });
-  }, []);
+    void refreshIntegrationStatus();
+  }, [refreshIntegrationStatus]);
 
   const toggleDetailMode = useCallback((mode: DetailMode) => {
     setDetailMode((current) => (current === mode ? 'capture' : mode));
@@ -207,6 +243,10 @@ export default function App() {
           onCaptureEntrySelect={() => setDetailMode('capture')}
           certStatus={certStatus}
           onOpenCertificateSettings={openCertFlow}
+          integrationStatus={integrationStatus}
+          onOpenAiSettings={() =>
+            openAiSettings(integrationStatus === 'update_available')
+          }
           proxyStatusNonce={proxyStatusNonce}
         />
       </main>
@@ -219,20 +259,46 @@ export default function App() {
         onStatusChange={setCertStatus}
         onComplete={handleCertOnboardingComplete}
       />
+      <PostCertIntegrationPrompt
+        open={postCertPromptOpen}
+        onOpenChange={setPostCertPromptOpen}
+        onChooseClient={(client) => {
+          setPostCertPromptOpen(false);
+          setIntegrationOnboardingClient(client);
+        }}
+        onDismiss={() => void window.yanshuf.integration.dismissPostCertPrompt()}
+      />
+      {integrationOnboardingClient && (
+        <IntegrationOnboarding
+          open={Boolean(integrationOnboardingClient)}
+          onOpenChange={(open) => {
+            if (!open) setIntegrationOnboardingClient(null);
+          }}
+          client={integrationOnboardingClient}
+          onOpenCertificate={openCertFlow}
+          onComplete={refreshIntegrationStatus}
+        />
+      )}
       <GuidedTour open={tourOpen} onComplete={completeTour} />
       <SettingsPanel
         open={settingsOpen}
         onOpenChange={(open) => {
           setSettingsOpen(open);
-          if (!open) refreshCertStatus();
+          if (!open) {
+            refreshCertStatus();
+            setFocusAiUpdates(false);
+          }
         }}
         defaultTab={settingsTab}
+        focusAiUpdates={focusAiUpdates}
         onCertStatusChange={setCertStatus}
         onOpenCertOnboarding={() => {
           setSettingsOpen(false);
           setOnboardingOpen(true);
         }}
         certStatus={certStatus}
+        integrationStatusNonce={integrationStatusNonce}
+        onIntegrationStatusChange={refreshIntegrationStatus}
       />
     </div>
   );

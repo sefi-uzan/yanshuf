@@ -9,4 +9,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src/renderer'),
     },
   },
+  // Workspace packages resolve to source; pre-bundling caches stale exports after changes.
+  optimizeDeps: {
+    exclude: ['@yanshuf/shared', '@yanshuf/ui'],
+  },
 });
