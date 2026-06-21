@@ -106,6 +106,7 @@ export interface PendingCapture {
   matchedMapRemoteRuleId?: string;
   mappedToUrl?: string;
   fromComposer?: boolean;
+  throttlePassthrough?: boolean;
 }
 
 export function buildFailedCaptureEntry(

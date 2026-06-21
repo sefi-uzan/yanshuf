@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS } from '@yanshuf/shared';
 import { AutoResponderEngine } from '../../src/main/auto-responder/engine';
 import { InterceptEngine } from '../../src/main/intercept/engine';
 import { MapRemoteEngine } from '../../src/main/map-remote/engine';
@@ -55,29 +56,23 @@ function minimalDeps(): McpHandlerDeps {
 
   const writes: Record<string, unknown> = {};
   return {
-    settings: {
-      port: 8888,
-      ringBufferSize: 100,
-      maxBodySize: 1024,
-      systemProxyEnabled: false,
-      proxyRunning: false,
-      captureFilter: { mode: 'exclude', urls: '' },
-    },
+    settings: { ...DEFAULT_SETTINGS },
     saveSettings: async () => {},
     captureStore,
     autoResponder,
     interceptEngine,
     mapRemoteEngine,
-    breakpointManager: { continue: () => false, abort: () => false } as McpHandlerDeps['breakpointManager'],
-    proxyServer: { isRunning: () => false, start: async () => {}, stop: async () => {} } as McpHandlerDeps['proxyServer'],
-    certManager: { verifyTrust: async () => ({ trusted: true }) } as McpHandlerDeps['certManager'],
-    systemProxy: { isEnabled: () => false, enable: async () => {}, disable: async () => {} } as McpHandlerDeps['systemProxy'],
+    breakpointManager: { continue: () => false, abort: () => false } as unknown as McpHandlerDeps['breakpointManager'],
+    proxyServer: { isRunning: () => false, start: async () => {}, stop: async () => {} } as unknown as McpHandlerDeps['proxyServer'],
+    certManager: { verifyTrust: async () => ({ trusted: true }) } as unknown as McpHandlerDeps['certManager'],
+    systemProxy: { isEnabled: () => false, enable: async () => {}, disable: async () => {} } as unknown as McpHandlerDeps['systemProxy'],
     composerService: {} as McpHandlerDeps['composerService'],
-    store: { write: async (key: string, value: unknown) => { writes[key] = value; } } as McpHandlerDeps['store'],
-    waitQueue: { waitForCapture: async () => null, waitForBreakpoint: async () => null } as McpHandlerDeps['waitQueue'],
+    store: { write: async (key: string, value: unknown) => { writes[key] = value; } } as unknown as McpHandlerDeps['store'],
+    waitQueue: { waitForCapture: async () => null, waitForBreakpoint: async () => null } as unknown as McpHandlerDeps['waitQueue'],
     mcpApiPort: 9473,
     broadcastCaptureUpdate: () => {},
     tagComposerCaptures: () => {},
+    mergeAndApplyThrottle: () => {},
   };
 }
 

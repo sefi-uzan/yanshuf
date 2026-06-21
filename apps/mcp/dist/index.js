@@ -21266,6 +21266,9 @@ var YanshufApiClient = class {
   abortBreakpoint(id) {
     return this.request("POST", `/breakpoints/${encodeURIComponent(id)}/abort`);
   }
+  setThrottle(body) {
+    return this.request("POST", "/throttle", body);
+  }
   waitForBreakpoint(timeoutMs) {
     const q = timeoutMs !== void 0 ? `?timeoutMs=${timeoutMs}` : "";
     return this.request("GET", `/breakpoints/wait${q}`);
@@ -21282,7 +21285,7 @@ function registerTools(server, client) {
   server.registerTool(
     "yanshuf_status",
     {
-      description: "Get Yanshuf capture status. Call this before yanshuf_toggle_capture. Returns capturing state, proxy port, entry count, and certTrusted.",
+      description: "Get Yanshuf capture status. Call this before yanshuf_toggle_capture. Returns capturing state, proxy port, entry count, certTrusted, and throttle settings.",
       inputSchema: {}
     },
     async () => textResult(await client.getStatus())
@@ -21294,6 +21297,20 @@ function registerTools(server, client) {
       inputSchema: {}
     },
     async () => textResult(await client.toggleCapture())
+  );
+  server.registerTool(
+    "yanshuf_set_throttle",
+    {
+      description: "Set or disable global network throttling. Pass enabled: false to disable. Returns updated status including throttle settings.",
+      inputSchema: {
+        enabled: external_exports.boolean().optional().describe("Set false to disable throttling"),
+        preset: external_exports.enum(["edge", "3g", "regular-3g", "regular-4g", "custom"]).optional().describe("Built-in network profile"),
+        latencyMs: external_exports.number().optional(),
+        downloadKbps: external_exports.number().optional(),
+        uploadKbps: external_exports.number().optional()
+      }
+    },
+    async (args) => textResult(await client.setThrottle(args))
   );
   server.registerTool(
     "yanshuf_cleanup_session",

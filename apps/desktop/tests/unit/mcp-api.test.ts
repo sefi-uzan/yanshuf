@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { describe, expect, it, afterEach } from 'vitest';
 import type { McpApiHandlers, YanshufStatus } from '@yanshuf/shared';
+import { DEFAULT_THROTTLE } from '@yanshuf/shared';
 import { McpApiServer } from '../../src/main/mcp-api/server';
 
 const TOKEN = 'test-token';
@@ -12,10 +13,15 @@ function mockHandlers(overrides: Partial<McpApiHandlers> = {}): McpApiHandlers {
     entryCount: 0,
     certTrusted: true,
     mcpApiPort: 9473,
+    throttle: DEFAULT_THROTTLE,
   };
   return {
     getStatus: async () => status,
     toggleCapture: async () => ({ ...status, capturing: true }),
+    setThrottle: async () => ({
+      ...status,
+      throttle: { ...DEFAULT_THROTTLE, enabled: true, preset: 'edge' },
+    }),
     cleanupSession: async () => ({
       entryCount: 0,
       disabledMockCount: 0,
@@ -68,7 +74,7 @@ function mockHandlers(overrides: Partial<McpApiHandlers> = {}): McpApiHandlers {
 function request(
   port: number,
   path: string,
-  options: { method?: string; token?: string } = {},
+  options: { method?: string; token?: string; body?: string } = {},
 ): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -77,7 +83,15 @@ function request(
         port,
         path,
         method: options.method ?? 'GET',
-        headers: options.token ? { Authorization: `Bearer ${options.token}` } : {},
+        headers: {
+          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+          ...(options.body
+            ? {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(options.body),
+              }
+            : {}),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -92,6 +106,7 @@ function request(
       },
     );
     req.on('error', reject);
+    if (options.body) req.write(options.body);
     req.end();
   });
 }
@@ -129,6 +144,20 @@ describe('McpApiServer', () => {
       disabledMockCount: 0,
       disabledInterceptCount: 0,
       disabledMapRemoteCount: 0,
+    });
+  });
+
+  it('sets throttle profile', async () => {
+    server = new McpApiServer(TOKEN, mockHandlers());
+    port = await server.start(0);
+    const res = await request(port, '/throttle', {
+      method: 'POST',
+      token: TOKEN,
+      body: JSON.stringify({ enabled: true, preset: 'edge' }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      throttle: { enabled: true, preset: 'edge' },
     });
   });
 });

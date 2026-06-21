@@ -4,6 +4,10 @@ import type { SystemProxyState } from '@yanshuf/shared';
 
 const execFileAsync = promisify(execFile);
 
+export interface SystemProxyEnableOptions {
+  captureLocalhost?: boolean;
+}
+
 async function listAllNetworkServices(): Promise<string[]> {
   const { stdout } = await execFileAsync('networksetup', ['-listallnetworkservices']);
   return stdout
@@ -69,6 +73,7 @@ interface ProxySnapshot {
 interface ServiceSnapshot {
   web: ProxySnapshot;
   secure: ProxySnapshot;
+  bypassDomains: string[];
 }
 
 function parseProxySetting(stdout: string): ProxySnapshot {
@@ -78,12 +83,29 @@ function parseProxySetting(stdout: string): ProxySnapshot {
   return { enabled, server, port };
 }
 
+function parseBypassDomains(stdout: string): string[] {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^there are/i.test(line));
+}
+
+async function readBypassDomains(service: string): Promise<string[]> {
+  const { stdout } = await execFileAsync('networksetup', ['-getproxybypassdomains', service]);
+  return parseBypassDomains(stdout);
+}
+
+async function setBypassDomains(service: string, domains: string[]): Promise<void> {
+  await execFileAsync('networksetup', ['-setproxybypassdomains', service, ...domains]);
+}
+
 async function readServiceSnapshot(service: string): Promise<ServiceSnapshot> {
-  const [web, secure] = await Promise.all([
+  const [web, secure, bypassDomains] = await Promise.all([
     execFileAsync('networksetup', ['-getwebproxy', service]).then((r) => parseProxySetting(r.stdout)),
     execFileAsync('networksetup', ['-getsecurewebproxy', service]).then((r) => parseProxySetting(r.stdout)),
+    readBypassDomains(service),
   ]);
-  return { web, secure };
+  return { web, secure, bypassDomains };
 }
 
 async function enableProxyForService(service: string, host: string, port: number): Promise<void> {
@@ -91,6 +113,13 @@ async function enableProxyForService(service: string, host: string, port: number
   await execFileAsync('networksetup', ['-setsecurewebproxy', service, host, String(port)]);
   await execFileAsync('networksetup', ['-setwebproxystate', service, 'on']);
   await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'on']);
+}
+
+async function applyBypassDomains(service: string, captureLocalhost: boolean): Promise<void> {
+  if (captureLocalhost) {
+    await setBypassDomains(service, ['Empty']);
+    return;
+  }
 }
 
 async function restoreProxyForService(service: string, snapshot: ServiceSnapshot): Promise<void> {
@@ -111,20 +140,28 @@ async function restoreProxyForService(service: string, snapshot: ServiceSnapshot
   } else {
     await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'off']);
   }
+  if (snapshot.bypassDomains.length > 0) {
+    await setBypassDomains(service, snapshot.bypassDomains);
+  } else {
+    await setBypassDomains(service, ['Empty']);
+  }
 }
 
 export class SystemProxyManager {
   private state: SystemProxyState = { enabled: false };
   private snapshots = new Map<string, ServiceSnapshot>();
+  private captureLocalhost = false;
 
-  async enable(host: string, port: number): Promise<void> {
+  async enable(host: string, port: number, opts?: SystemProxyEnableOptions): Promise<void> {
     if (process.platform !== 'darwin') {
       throw new Error('System proxy is only supported on macOS');
     }
 
+    const captureLocalhost = opts?.captureLocalhost ?? this.captureLocalhost;
+    this.captureLocalhost = captureLocalhost;
+
     const services = await getNetworkServicesForProxy();
 
-    // Snapshot each service so disable() can restore any pre-existing proxy config.
     this.snapshots.clear();
     for (const service of services) {
       try {
@@ -138,6 +175,7 @@ export class SystemProxyManager {
 
     for (const service of services) {
       await enableProxyForService(service, host, port);
+      await applyBypassDomains(service, captureLocalhost);
     }
   }
 
@@ -169,18 +207,33 @@ export class SystemProxyManager {
     return this.state.enabled;
   }
 
-  async updatePort(host: string, port: number): Promise<void> {
+  async updatePort(host: string, port: number, opts?: SystemProxyEnableOptions): Promise<void> {
     if (process.platform !== 'darwin' || !this.state.enabled) return;
+
+    if (opts?.captureLocalhost !== undefined) {
+      this.captureLocalhost = opts.captureLocalhost;
+    }
 
     const services =
       this.snapshots.size > 0 ? [...this.snapshots.keys()] : await getNetworkServicesForProxy();
 
     for (const service of services) {
       await enableProxyForService(service, host, port);
+      await applyBypassDomains(service, this.captureLocalhost);
     }
+  }
+
+  async updateCaptureLocalhost(captureLocalhost: boolean, host: string, port: number): Promise<void> {
+    if (!this.state.enabled) {
+      this.captureLocalhost = captureLocalhost;
+      return;
+    }
+    await this.updatePort(host, port, { captureLocalhost });
   }
 
   getState(): SystemProxyState {
     return this.state;
   }
 }
+
+export { parseBypassDomains, readBypassDomains, setBypassDomains };

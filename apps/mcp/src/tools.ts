@@ -13,7 +13,7 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
     'yanshuf_status',
     {
       description:
-        'Get Yanshuf capture status. Call this before yanshuf_toggle_capture. Returns capturing state, proxy port, entry count, and certTrusted.',
+        'Get Yanshuf capture status. Call this before yanshuf_toggle_capture. Returns capturing state, proxy port, entry count, certTrusted, and throttle settings.',
       inputSchema: {},
     },
     async () => textResult(await client.getStatus()),
@@ -27,6 +27,25 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
       inputSchema: {},
     },
     async () => textResult(await client.toggleCapture()),
+  );
+
+  server.registerTool(
+    'yanshuf_set_throttle',
+    {
+      description:
+        'Set or disable global network throttling. Pass enabled: false to disable. Returns updated status including throttle settings.',
+      inputSchema: {
+        enabled: z.boolean().optional().describe('Set false to disable throttling'),
+        preset: z
+          .enum(['edge', '3g', 'regular-3g', 'regular-4g', 'custom'])
+          .optional()
+          .describe('Built-in network profile'),
+        latencyMs: z.number().optional(),
+        downloadKbps: z.number().optional(),
+        uploadKbps: z.number().optional(),
+      },
+    },
+    async (args) => textResult(await client.setThrottle(args)),
   );
 
   server.registerTool(

@@ -23,8 +23,9 @@ Yanshuf is a local macOS proxy debugger. Use MCP tools prefixed with `yanshuf_`.
 
 | Tool | When |
 |------|------|
-| `yanshuf_status` | Pre-flight; check capturing, port, entryCount, certTrusted |
+| `yanshuf_status` | Pre-flight; check capturing, port, entryCount, certTrusted, throttle |
 | `yanshuf_toggle_capture` | Start/stop capture (system proxy + MITM together) |
+| `yanshuf_set_throttle` | Enable/disable global network throttling or apply a preset |
 | `yanshuf_cleanup_session` | Clear captures and disable all rules when done |
 | `yanshuf_search_captures` | Find captures (max 100, latest first) — use before get |
 | `yanshuf_get_capture` | Full request/response for one ID |

@@ -10,8 +10,18 @@ import type {
   InterceptRule,
   MapRemoteRule,
   MenuAction,
+  ThrottleSetPatch,
 } from '@yanshuf/shared';
-import { DEFAULT_CAPTURE_FILTER, DEFAULT_SETTINGS, IPC_CHANNELS , shouldCaptureUrl , exportCurl } from '@yanshuf/shared';
+import {
+  DEFAULT_CAPTURE_FILTER,
+  DEFAULT_SETTINGS,
+  DEFAULT_THROTTLE,
+  IPC_CHANNELS,
+  exportCurl,
+  mergeThrottleSettings,
+  resolveThrottleSettings,
+  shouldRecordCapture,
+} from '@yanshuf/shared';
 import { AutoResponderEngine } from './auto-responder/engine';
 import { BreakpointManager } from './intercept/breakpoint-manager';
 import { InterceptEngine } from './intercept/engine';
@@ -22,6 +32,7 @@ import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
 import { CaptureStore } from './proxy/capture-store';
 import { ProxyServer } from './proxy/server';
+import { ThrottleController, toThrottleConfig } from './proxy/throttle';
 import { JsonFileStore } from './storage/json-store';
 import { SystemProxyManager } from './system-proxy/macos';
 import { ensureMcpAuth, getMcpDataDir } from './mcp-api/auth';
@@ -87,6 +98,7 @@ let interceptEngine: InterceptEngine;
 let mapRemoteEngine: MapRemoteEngine;
 let breakpointManager: BreakpointManager;
 let proxyServer: ProxyServer;
+let throttleController: ThrottleController;
 let certManager: CertificateManager;
 let systemProxy: SystemProxyManager;
 let composerService: ComposerService;
@@ -126,8 +138,23 @@ function applyAppIcon(): void {
   }
 }
 
-function buildShouldCapture(): (url: string) => boolean {
-  return (url) => shouldCaptureUrl(url, settings.captureFilter ?? DEFAULT_CAPTURE_FILTER);
+function buildShouldCapture(): (url: string, host: string) => boolean {
+  return (url, host) =>
+    shouldRecordCapture(url, host, settings.captureFilter ?? DEFAULT_CAPTURE_FILTER, {
+      captureLocalhost: settings.captureLocalhost ?? false,
+      proxyPort: settings.port,
+      mcpApiPort,
+    });
+}
+
+function applyThrottleFromSettings(): void {
+  throttleController.update(toThrottleConfig(settings.throttle));
+  proxyServer?.updateOptions({ throttle: throttleController });
+}
+
+function mergeAndApplyThrottle(patch: ThrottleSetPatch | null): void {
+  settings.throttle = mergeThrottleSettings(settings.throttle, patch);
+  applyThrottleFromSettings();
 }
 
 async function loadState(): Promise<void> {
@@ -143,6 +170,11 @@ async function loadState(): Promise<void> {
       ...DEFAULT_CAPTURE_FILTER,
       ...stored.captureFilter,
     },
+    throttle: {
+      ...DEFAULT_THROTTLE,
+      ...stored.throttle,
+    },
+    captureLocalhost: stored.captureLocalhost ?? DEFAULT_SETTINGS.captureLocalhost,
   };
   captureStore = new CaptureStore(settings.ringBufferSize);
   autoResponder = new AutoResponderEngine();
@@ -172,6 +204,7 @@ async function loadState(): Promise<void> {
   certManager = new CertificateManager(store.getCertsDir());
   await certManager.ensureCaGenerated();
   systemProxy = new SystemProxyManager();
+  throttleController = new ThrottleController(toThrottleConfig(settings.throttle));
 
   proxyServer = new ProxyServer({
     port: settings.port,
@@ -184,6 +217,7 @@ async function loadState(): Promise<void> {
     mapRemoteEngine,
     breakpointManager,
     shouldCapture: buildShouldCapture(),
+    throttle: throttleController,
   });
 
   proxyServer.on('capture', (entry) => {
@@ -199,7 +233,9 @@ async function loadState(): Promise<void> {
   if (settings.systemProxyEnabled) {
     try {
       await assertCertTrusted(certManager);
-      await systemProxy.enable('127.0.0.1', settings.port);
+      await systemProxy.enable('127.0.0.1', settings.port, {
+        captureLocalhost: settings.captureLocalhost,
+      });
     } catch {
       settings.systemProxyEnabled = false;
       await saveSettings();
@@ -232,6 +268,7 @@ function getProxyStatus() {
     port: settings.port,
     entryCount: captureStore.count,
     systemProxyEnabled: systemProxy.isEnabled(),
+    throttle: resolveThrottleSettings(settings.throttle),
   };
 }
 
@@ -402,6 +439,7 @@ async function startMcpApi(userDataPath: string): Promise<void> {
     mcpApiPort: config.port,
     broadcastCaptureUpdate,
     tagComposerCaptures,
+    mergeAndApplyThrottle,
   });
 
   mcpApiServer = new McpApiServer(token, handlers);
@@ -432,6 +470,12 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STATUS, () => getProxyStatus());
+
+  ipcMain.handle(IPC_CHANNELS.PROXY_THROTTLE_SET, async (_e, patch: ThrottleSetPatch | null) => {
+    mergeAndApplyThrottle(patch);
+    await saveSettings();
+    return getProxyStatus();
+  });
 
   ipcMain.handle(IPC_CHANNELS.CAPTURE_LIST, () => captureStore.list());
 
@@ -471,7 +515,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_ENABLE, async () => {
     try {
       await assertCertTrusted(certManager);
-      await systemProxy.enable('127.0.0.1', settings.port);
+      await systemProxy.enable('127.0.0.1', settings.port, {
+        captureLocalhost: settings.captureLocalhost,
+      });
       settings.systemProxyEnabled = true;
       await saveSettings();
       return getProxyStatus();
@@ -574,23 +620,40 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
     const prevPort = settings.port;
+    const prevCaptureLocalhost = settings.captureLocalhost;
     settings = {
       ...next,
       captureFilter: {
         ...DEFAULT_CAPTURE_FILTER,
         ...next.captureFilter,
       },
+      throttle: {
+        ...DEFAULT_THROTTLE,
+        ...next.throttle,
+      },
+      captureLocalhost: next.captureLocalhost ?? false,
     };
     captureStore.setMaxSize(settings.ringBufferSize);
+    applyThrottleFromSettings();
     proxyServer.updateOptions({
       port: settings.port,
       maxBodySize: settings.maxBodySize,
       shouldCapture: buildShouldCapture(),
     });
 
+    if (settings.captureLocalhost !== prevCaptureLocalhost && systemProxy.isEnabled()) {
+      await systemProxy.updateCaptureLocalhost(
+        settings.captureLocalhost,
+        '127.0.0.1',
+        settings.port,
+      );
+    }
+
     if (settings.port !== prevPort) {
       if (systemProxy.isEnabled()) {
-        await systemProxy.updatePort('127.0.0.1', settings.port);
+        await systemProxy.updatePort('127.0.0.1', settings.port, {
+          captureLocalhost: settings.captureLocalhost,
+        });
       }
       if (proxyServer.isRunning()) {
         await proxyServer.stop();

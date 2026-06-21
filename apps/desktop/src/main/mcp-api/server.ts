@@ -98,6 +98,13 @@ export class McpApiServer {
         return;
       }
 
+      if (method === 'POST' && url.pathname === '/throttle') {
+        const raw = await readBody(req);
+        const body = raw ? JSON.parse(raw) : null;
+        sendJson(res, 200, await this.handlers.setThrottle(body));
+        return;
+      }
+
       if (method === 'POST' && url.pathname === '/session/cleanup') {
         sendJson(res, 200, await this.handlers.cleanupSession());
         return;

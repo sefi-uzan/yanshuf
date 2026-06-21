@@ -147,6 +147,24 @@ export interface CaptureFilterSettings {
   urls: string;
 }
 
+export type ThrottlePreset = 'custom' | 'edge' | '3g' | 'regular-3g' | 'regular-4g';
+
+export interface ThrottleSettings {
+  enabled: boolean;
+  preset: ThrottlePreset;
+  latencyMs: number;
+  downloadKbps: number;
+  uploadKbps: number;
+}
+
+export interface ThrottleSetPatch {
+  enabled?: boolean;
+  preset?: ThrottlePreset;
+  latencyMs?: number;
+  downloadKbps?: number;
+  uploadKbps?: number;
+}
+
 export interface AppSettings {
   port: number;
   ringBufferSize: number;
@@ -155,6 +173,8 @@ export interface AppSettings {
   proxyRunning: boolean;
   guidedTourCompleted?: boolean;
   captureFilter: CaptureFilterSettings;
+  captureLocalhost: boolean;
+  throttle: ThrottleSettings;
 }
 
 export interface CertStatus {
@@ -171,6 +191,7 @@ export interface ProxyStatus {
   port: number;
   entryCount: number;
   systemProxyEnabled: boolean;
+  throttle: ThrottleSettings;
 }
 
 export interface SystemProxyState {
@@ -182,6 +203,14 @@ export const DEFAULT_CAPTURE_FILTER: CaptureFilterSettings = {
   urls: '',
 };
 
+export const DEFAULT_THROTTLE: ThrottleSettings = {
+  enabled: false,
+  preset: '3g',
+  latencyMs: 200,
+  downloadKbps: 780,
+  uploadKbps: 330,
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   port: 8888,
   ringBufferSize: 10000,
@@ -190,6 +219,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   proxyRunning: false,
   guidedTourCompleted: false,
   captureFilter: DEFAULT_CAPTURE_FILTER,
+  captureLocalhost: false,
+  throttle: DEFAULT_THROTTLE,
 };
 
 export const IPC_CHANNELS = {
@@ -197,6 +228,7 @@ export const IPC_CHANNELS = {
   PROXY_STOP: 'proxy:stop',
   PROXY_STATUS: 'proxy:status',
   PROXY_TOGGLE: 'proxy:toggle',
+  PROXY_THROTTLE_SET: 'proxy:throttle-set',
   CAPTURE_LIST: 'capture:list',
   CAPTURE_GET: 'capture:get',
   CAPTURE_CLEAR: 'capture:clear',

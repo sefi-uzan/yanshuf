@@ -202,6 +202,10 @@ export class YanshufApiClient {
     return this.request<{ ok: boolean }>('POST', `/breakpoints/${encodeURIComponent(id)}/abort`);
   }
 
+  setThrottle(body: Record<string, unknown> | null) {
+    return this.request<Record<string, unknown>>('POST', '/throttle', body);
+  }
+
   waitForBreakpoint(timeoutMs?: number) {
     const q = timeoutMs !== undefined ? `?timeoutMs=${timeoutMs}` : '';
     return this.request<Record<string, unknown>>('GET', `/breakpoints/wait${q}`);

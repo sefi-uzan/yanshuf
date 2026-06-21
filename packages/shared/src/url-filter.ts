@@ -1,4 +1,9 @@
 import type { CaptureFilterSettings } from './types';
+import { isLocalhostHost, isSelfTraffic, parseHostPort, type SelfTrafficOptions } from './localhost';
+
+export interface ShouldRecordCaptureOptions extends SelfTrafficOptions {
+  captureLocalhost: boolean;
+}
 
 export function parseFilterPatterns(urls: string): string[] {
   return urls
@@ -26,4 +31,16 @@ export function shouldCaptureUrl(url: string, filter: CaptureFilterSettings): bo
 
   const matches = urlMatchesAnyPattern(url, patterns);
   return filter.mode === 'include' ? matches : !matches;
+}
+
+export function shouldRecordCapture(
+  url: string,
+  host: string,
+  filter: CaptureFilterSettings,
+  opts: ShouldRecordCaptureOptions,
+): boolean {
+  const { port } = parseHostPort(url, host);
+  if (isSelfTraffic(host, port, opts)) return false;
+  if (!opts.captureLocalhost && isLocalhostHost(host)) return false;
+  return shouldCaptureUrl(url, filter);
 }

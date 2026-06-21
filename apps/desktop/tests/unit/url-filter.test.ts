@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseFilterPatterns,
   shouldCaptureUrl,
+  shouldRecordCapture,
   urlMatchesPattern,
 } from '@yanshuf/shared';
 
@@ -36,5 +37,30 @@ describe('url-filter', () => {
   it('captures everything when no patterns are set', () => {
     expect(shouldCaptureUrl('https://any.test/', { mode: 'include', urls: '' })).toBe(true);
     expect(shouldCaptureUrl('https://any.test/', { mode: 'exclude', urls: '' })).toBe(true);
+  });
+
+  it('excludes localhost when captureLocalhost is false', () => {
+    const filter = { mode: 'exclude' as const, urls: '' };
+    const opts = { captureLocalhost: false, proxyPort: 8888, mcpApiPort: 9473 };
+    expect(
+      shouldRecordCapture('http://127.0.0.1:3000/api', '127.0.0.1:3000', filter, opts),
+    ).toBe(false);
+    expect(
+      shouldRecordCapture('https://example.com/', 'example.com', filter, opts),
+    ).toBe(true);
+  });
+
+  it('always excludes self traffic on yanshuf ports', () => {
+    const filter = { mode: 'exclude' as const, urls: '' };
+    const opts = { captureLocalhost: true, proxyPort: 8888, mcpApiPort: 9473 };
+    expect(
+      shouldRecordCapture('http://127.0.0.1:8888/', '127.0.0.1:8888', filter, opts),
+    ).toBe(false);
+    expect(
+      shouldRecordCapture('http://127.0.0.1:9473/status', '127.0.0.1:9473', filter, opts),
+    ).toBe(false);
+    expect(
+      shouldRecordCapture('http://127.0.0.1:3000/', '127.0.0.1:3000', filter, opts),
+    ).toBe(true);
   });
 });
