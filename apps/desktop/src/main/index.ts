@@ -39,6 +39,9 @@ import {
   type IntegrationRegistryService,
 } from './mcp-api/integration-registry';
 import type { IntegrationUninstallPayload, IntegrationVerifyParams, SkillInstallTarget } from '@yanshuf/shared';
+import { augmentProcessPath } from './shell-path';
+
+augmentProcessPath();
 
 // Only one instance may own the proxy port; focus the existing window instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
