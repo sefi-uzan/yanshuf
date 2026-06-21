@@ -33,6 +33,7 @@ export default function App() {
   const [tourOpen, setTourOpen] = useState(false);
   const [proxyStatusNonce, setProxyStatusNonce] = useState(0);
   const firstRunChecked = useRef(false);
+  const pendingTourRef = useRef(false);
 
   const refreshCertStatus = useCallback(() => {
     void window.yanshuf.cert.status().then(setCertStatus);
@@ -91,11 +92,12 @@ export default function App() {
     await window.yanshuf.settings.save({ ...current, guidedTourCompleted: true });
   }, []);
 
-  const maybeShowPostCertPrompt = useCallback(async () => {
-    const status = await window.yanshuf.integration.status();
-    const registry = await window.yanshuf.integration.getRegistry();
-    if (!status.hasAnyInstall && !registry.postCertPromptDismissed) {
-      setPostCertPromptOpen(true);
+  const startTourIfPending = useCallback(async () => {
+    if (!pendingTourRef.current) return;
+    pendingTourRef.current = false;
+    const settings = await window.yanshuf.settings.get();
+    if (!settings.guidedTourCompleted) {
+      setTourOpen(true);
     }
   }, []);
 
@@ -108,10 +110,17 @@ export default function App() {
     setProxyStatusNonce((n) => n + 1);
     const settings = await window.yanshuf.settings.get();
     if (!settings.guidedTourCompleted) {
-      setTourOpen(true);
+      pendingTourRef.current = true;
     }
-    void maybeShowPostCertPrompt();
-  }, [maybeShowPostCertPrompt]);
+
+    const status = await window.yanshuf.integration.status();
+    const registry = await window.yanshuf.integration.getRegistry();
+    if (!status.hasAnyInstall && !registry.postCertPromptDismissed) {
+      setPostCertPromptOpen(true);
+    } else {
+      void startTourIfPending();
+    }
+  }, [startTourIfPending]);
 
   useEffect(() => {
     void window.yanshuf.cert.status().then((status) => {
@@ -274,7 +283,10 @@ export default function App() {
       />
       <PostCertIntegrationPrompt
         open={postCertPromptOpen}
-        onOpenChange={setPostCertPromptOpen}
+        onOpenChange={(open) => {
+          setPostCertPromptOpen(open);
+          if (!open) void startTourIfPending();
+        }}
         onChooseClient={(client) => {
           setPostCertPromptOpen(false);
           setIntegrationOnboardingClient(client);
@@ -285,7 +297,10 @@ export default function App() {
         <IntegrationOnboarding
           open={Boolean(integrationOnboardingClient)}
           onOpenChange={(open) => {
-            if (!open) setIntegrationOnboardingClient(null);
+            if (!open) {
+              setIntegrationOnboardingClient(null);
+              void startTourIfPending();
+            }
           }}
           client={integrationOnboardingClient}
           onOpenCertificate={openCertFlow}
