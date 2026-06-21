@@ -3,7 +3,7 @@ import type { CaptureEntry } from '@yanshuf/shared';
 import {
   captureToAutoResponderRule,
   escapeRegex,
-} from '../../src/renderer/features/auto-responder/captureToRule';
+} from '@yanshuf/shared';
 
 const sampleEntry: CaptureEntry = {
   id: 'entry-1',

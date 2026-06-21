@@ -30,7 +30,7 @@ import { notifyDeleted } from '@/lib/toast-actions';
 import { setListItemDragImage, removeListItemDragImage } from '@/lib/dnd';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
 import { WorkspaceEmptyCards, WorkspaceShell } from '@/components/workspace/WorkspaceShell';
-import { captureToAutoResponderRule } from '@/features/auto-responder/captureToRule';
+import { captureToAutoResponderRule } from '@yanshuf/shared';
 import { InterceptRuleEditor } from '@/features/rules/InterceptRuleEditor';
 import { MockRuleEditor } from '@/features/rules/MockRuleEditor';
 import { RuleActionPicker, ruleActionAccentClass } from '@/features/rules/RuleActionPicker';

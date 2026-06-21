@@ -13,8 +13,7 @@ import { Badge ,
 } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
-import { formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
-import { captureToComposerRequest } from '../composer/captureToComposer';
+import { captureToComposerRequest , formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
 import { Copy, Ellipsis, Lock, PauseCircle, PenLine, Zap } from 'lucide-react';
 
 interface SessionListProps {

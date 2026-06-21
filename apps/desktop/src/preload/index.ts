@@ -65,6 +65,33 @@ export interface YanshufAPI {
   };
   dialog: {
     pickFile: (options?: { title?: string }) => Promise<string | null>;
+    pickDirectory: (options?: { title?: string }) => Promise<string | null>;
+  };
+  integration: {
+    install: (
+      client: 'cursor' | 'claude-code',
+      target: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
+    ) => Promise<{
+      mcp: { ok: boolean; message: string; path?: string };
+      skill: { ok: boolean; message: string; path?: string };
+      hook: { ok: boolean; message: string; path?: string };
+    }>;
+    installStep: (
+      step: 'mcp' | 'skill' | 'hook',
+      client: 'cursor' | 'claude-code',
+      target?: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
+    ) => Promise<{ ok: boolean; message: string; path?: string }>;
+    verify: (
+      client: 'cursor' | 'claude-code',
+      target: { kind: 'personal' } | { kind: 'project'; repoRoot: string },
+    ) => Promise<{
+      mcpConfigured: boolean;
+      skillInstalled: boolean;
+      hookInstalled: boolean;
+      apiReachable: boolean;
+      certTrusted: boolean;
+      details: string[];
+    }>;
   };
   menu: {
     onAction: (callback: (action: MenuAction) => void) => () => void;
@@ -129,6 +156,13 @@ const api: YanshufAPI = {
   },
   dialog: {
     pickFile: (options) => ipcRenderer.invoke(IPC_CHANNELS.DIALOG_PICK_FILE, options),
+    pickDirectory: (options) => ipcRenderer.invoke(IPC_CHANNELS.DIALOG_PICK_DIRECTORY, options),
+  },
+  integration: {
+    install: (client, target) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_INSTALL, client, target),
+    installStep: (step, client, target) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_INSTALL_STEP, step, client, target),
+    verify: (client, target) => ipcRenderer.invoke(IPC_CHANNELS.MCP_INTEGRATION_VERIFY, client, target),
   },
   menu: {
     onAction: (callback) => {

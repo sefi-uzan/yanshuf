@@ -6,9 +6,9 @@
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
-    "start": "electron-forge start",
+    "start": "pnpm --filter @yanshuf/mcp build && electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make",
+    "make": "pnpm --filter @yanshuf/mcp build && electron-forge make",
     "icons": "bash scripts/build-icons.sh",
     "publish": "electron-forge publish",
     "typecheck": "tsc --noEmit",

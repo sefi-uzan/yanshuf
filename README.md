@@ -33,8 +33,8 @@ This repository is a **pnpm + Turborepo monorepo**.
 ```
 apps/
 ├── desktop/       # @yanshuf/desktop — Electron app
-├── mcp/           # (planned) MCP server for Cursor / Claude Code
-└── web/           # (planned) Next.js landing site
+├── mcp/             # @yanshuf/mcp — MCP server for Cursor / Claude Code
+└── web/             # (planned) Next.js landing site
 
 packages/
 ├── shared/        # @yanshuf/shared — types, IPC, utilities
@@ -72,6 +72,7 @@ Run a task for a single package:
 
 ```bash
 pnpm --filter @yanshuf/desktop start
+pnpm --filter @yanshuf/mcp build
 pnpm --filter @yanshuf/shared test
 ```
 
