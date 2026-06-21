@@ -64,6 +64,43 @@ export function isBenignProxyError(err: unknown, kind?: string): boolean {
   return false;
 }
 
+const EXPECTED_UPSTREAM_CODES = new Set([
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EHOSTDOWN',
+]);
+
+export function isExpectedUpstreamError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code && EXPECTED_UPSTREAM_CODES.has(code)) return true;
+  const message = err.message.toLowerCase();
+  return message.includes('getaddrinfo enotfound') || message.includes('connect econnrefused');
+}
+
+export function formatUpstreamError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const code = (err as NodeJS.ErrnoException).code;
+  const message = err.message;
+
+  if (code === 'ENOTFOUND' || message.includes('getaddrinfo ENOTFOUND')) {
+    const host = message.match(/getaddrinfo ENOTFOUND (\S+)/i)?.[1];
+    return host ? `Could not resolve host: ${host}` : 'Could not resolve upstream host';
+  }
+  if (code === 'ECONNREFUSED') return 'Connection refused by upstream server';
+  if (code === 'ETIMEDOUT' || code === 'ERR_HTTP_REQUEST_TIMEOUT') {
+    return 'Upstream connection timed out';
+  }
+  if (code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || code === 'EHOSTDOWN') {
+    return 'Upstream host is unreachable';
+  }
+  return message;
+}
+
 function shouldSuppressDebug(message: string): boolean {
   if (DEBUG_PREFIXES.some((prefix) => message.startsWith(prefix))) return true;
   return SUPPRESSED_DEBUG_SUBSTRINGS.some((substring) => message.includes(substring));
@@ -93,7 +130,7 @@ function filteredError(...args: unknown[]): void {
     if (pendingErrorKind) {
       const kind = pendingErrorKind;
       pendingErrorKind = null;
-      if (isBenignProxyError(args[0], kind)) return;
+      if (isBenignProxyError(args[0], kind) || isExpectedUpstreamError(args[0])) return;
       originalError!(kind);
       originalError!(args[0]);
       return;

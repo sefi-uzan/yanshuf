@@ -18,16 +18,17 @@ import {
 } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import {
+  ArrowRightLeft,
   ChevronDown,
   GripVertical,
   MoreVertical,
   PauseCircle,
   PenLine,
   Plus,
+  Trash2,
   Zap,
-  ArrowRightLeft,
 } from 'lucide-react';
-import { notifyDeleted } from '@/lib/toast-actions';
+import { notifyDeleted, notifyRemoved } from '@/lib/toast-actions';
 import { setListItemDragImage, removeListItemDragImage } from '@/lib/dnd';
 import { DropCaptureZone } from '@/components/DropCaptureZone';
 import { WorkspaceEmptyCards, WorkspaceShell } from '@/components/workspace/WorkspaceShell';
@@ -76,6 +77,7 @@ export function AutoResponderWorkspace({
   const [requestHeadersDraft, setRequestHeadersDraft] = useState('{}');
   const [responseHeadersDraft, setResponseHeadersDraft] = useState('{}');
   const [ruleToDelete, setRuleToDelete] = useState<SelectedRuleRef | null>(null);
+  const [clearRulesOpen, setClearRulesOpen] = useState(false);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [filter, setFilter] = useState<RuleFilter>('all');
 
@@ -270,6 +272,16 @@ export function AutoResponderWorkspace({
     }
   };
 
+  const clearAllRules = () => {
+    void Promise.all([
+      saveMockRules([]),
+      saveInterceptRules([]),
+      saveMapRemoteRules([]),
+    ]);
+    setSelected(null);
+    notifyRemoved('All rules');
+  };
+
   const addRule = (action: RuleAction) => {
     if (action === 'mock') {
       const rule = emptyMockRule(mockRules.length);
@@ -332,6 +344,17 @@ export function AutoResponderWorkspace({
         description="Mock responses or intercept live traffic — first match wins."
         headerActions={(
           <>
+            {totalCount > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setClearRulesOpen(true)}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                Clear rules
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" className="gap-1">
@@ -564,6 +587,30 @@ export function AutoResponderWorkspace({
               }}
             >
               Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clearRulesOpen} onOpenChange={setClearRulesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear all rules?</DialogTitle>
+            <DialogDescription>
+              This will remove all {totalCount} saved rule{totalCount === 1 ? '' : 's'} — mock, rewrite,
+              breakpoint, and map remote. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setClearRulesOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                clearAllRules();
+                setClearRulesOpen(false);
+              }}
+            >
+              Clear rules
             </Button>
           </div>
         </DialogContent>

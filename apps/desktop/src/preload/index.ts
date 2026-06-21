@@ -23,6 +23,7 @@ import type {
   MenuAction,
   ProxyStatus,
   SkillInstallTarget,
+  AppNotifyPayload,
 } from '@yanshuf/shared';
 import { IPC_CHANNELS } from '@yanshuf/shared';
 
@@ -118,6 +119,9 @@ export interface YanshufAPI {
   menu: {
     onAction: (callback: (action: MenuAction) => void) => () => void;
   };
+  app: {
+    onNotify: (callback: (payload: AppNotifyPayload) => void) => () => void;
+  };
 }
 
 const api: YanshufAPI = {
@@ -204,6 +208,13 @@ const api: YanshufAPI = {
       const handler = (_: Electron.IpcRendererEvent, action: MenuAction) => callback(action);
       ipcRenderer.on(IPC_CHANNELS.MENU_ACTION, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.MENU_ACTION, handler);
+    },
+  },
+  app: {
+    onNotify: (callback) => {
+      const handler = (_: Electron.IpcRendererEvent, payload: AppNotifyPayload) => callback(payload);
+      ipcRenderer.on(IPC_CHANNELS.APP_NOTIFY, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.APP_NOTIFY, handler);
     },
   },
 };

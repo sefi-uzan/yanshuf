@@ -16,6 +16,7 @@ import {
 import {
   buildCaptureEntry,
   buildBreakpointCaptureEntry,
+  buildFailedCaptureEntry,
   CaptureStore,
   extractRequestInfo,
   type PendingCapture,
@@ -25,7 +26,7 @@ import { headersToRecord ,
   stripComposerCaptureHeader,
 } from '@yanshuf/shared';
 import type { InterceptRule } from '@yanshuf/shared';
-import { installProxyConsoleFilter, isBenignProxyError, uninstallProxyConsoleFilter } from './console-filter';
+import { installProxyConsoleFilter, isBenignProxyError, isExpectedUpstreamError, formatUpstreamError, uninstallProxyConsoleFilter } from './console-filter';
 
 type ProxyContext = Parameters<Parameters<Proxy['onRequest']>[0]>[0];
 
@@ -181,9 +182,24 @@ export class ProxyServer extends EventEmitter {
 
       proxy.onError((ctx, err, kind) => {
         const id = ctx ? (ctx as { yanshufId?: string }).yanshufId : undefined;
-        if (id) this.pending.delete(id);
-        if (err && isBenignProxyError(err, kind)) return;
-        if (this.running) this.emit('error', err);
+        if (err && isBenignProxyError(err, kind)) {
+          if (id) this.pending.delete(id);
+          return;
+        }
+
+        if (id && err) {
+          this.finalizeFailedCapture(id, err);
+        } else if (id) {
+          this.pending.delete(id);
+        }
+
+        if (err && this.running) {
+          const message = isExpectedUpstreamError(err) ? formatUpstreamError(err) : err instanceof Error ? err.message : String(err);
+          this.emit('notify', message);
+          if (!isExpectedUpstreamError(err)) {
+            console.error('[proxy]', err);
+          }
+        }
       });
 
       proxy.use(Proxy.gunzip);
@@ -427,7 +443,7 @@ export class ProxyServer extends EventEmitter {
         callback();
       })().catch((err) => {
         this.pending.delete(captureId);
-        this.emit('error', err);
+        this.emit('notify', err instanceof Error ? err.message : 'Breakpoint error');
         this.abortClient(ctx.proxyToClientResponse, 'Breakpoint error');
       });
     });
@@ -536,7 +552,7 @@ export class ProxyServer extends EventEmitter {
         }
       })().catch((err) => {
         if (captureId) this.pending.delete(captureId);
-        this.emit('error', err);
+        this.emit('notify', err instanceof Error ? err.message : 'Breakpoint error');
         this.abortClient(ctx.proxyToClientResponse, 'Breakpoint error');
       });
     });
@@ -615,7 +631,20 @@ export class ProxyServer extends EventEmitter {
         this.emit('capture', entry);
       }
     } catch (err) {
-      this.emit('error', err);
+      this.emit('notify', err instanceof Error ? err.message : 'Mock response failed');
+    }
+  }
+
+  private finalizeFailedCapture(id: string, err: unknown): void {
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    this.pending.delete(id);
+
+    const message = isExpectedUpstreamError(err) ? formatUpstreamError(err) : err instanceof Error ? err.message : 'Upstream request failed';
+    const entry = buildFailedCaptureEntry(pending, 504, message, this.options.maxBodySize);
+    if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+      this.options.captureStore.upsert(entry);
+      this.emit('capture', entry);
     }
   }
 
