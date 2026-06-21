@@ -28,6 +28,22 @@ Build HTTP requests, import/export cURL, and keep a send history of recent reque
 
 ## Development
 
+This repository is a **pnpm + Turborepo monorepo**.
+
+```
+apps/
+├── desktop/       # @yanshuf/desktop — Electron app
+├── mcp/           # (planned) MCP server for Cursor / Claude Code
+└── web/           # (planned) Next.js landing site
+
+packages/
+├── shared/        # @yanshuf/shared — types, IPC, utilities
+├── ui/            # @yanshuf/ui — shadcn/ui components
+├── typescript-config/
+├── eslint-config/
+└── tailwind-config/
+```
+
 ### Prerequisites
 
 - Node.js 20+
@@ -45,19 +61,27 @@ pnpm start
 
 | Command | Description |
 |---------|-------------|
-| `pnpm start` | Run Electron in development mode |
+| `pnpm start` | Run Electron desktop app in development mode |
+| `pnpm typecheck` | Type-check all packages |
+| `pnpm lint` | Lint all packages |
 | `pnpm test` | Run unit tests (Vitest) |
-| `pnpm test:e2e` | Run Playwright E2E tests |
-| `pnpm make` | Build a distributable (.dmg on macOS) |
+| `pnpm test:e2e` | Run Playwright E2E tests (desktop) |
+| `pnpm make` | Build a distributable `.dmg` (desktop) |
 
-### Project structure
+Run a task for a single package:
+
+```bash
+pnpm --filter @yanshuf/desktop start
+pnpm --filter @yanshuf/shared test
+```
+
+### Desktop app structure
 
 ```
-src/
+apps/desktop/src/
 ├── main/          # Electron main process (proxy, IPC, storage)
 ├── preload/       # contextBridge API
-├── renderer/      # React + shadcn/ui
-└── shared/        # Shared types and utilities
+└── renderer/      # React UI (features, app components)
 ```
 
 ## Packaging & code signing
@@ -92,7 +116,7 @@ For signed distribution outside your machine:
 3. Sign the app: `codesign --force --deep --sign "Developer ID Application: …" out/Yanshuf-darwin-*/Yanshuf.app`
 4. Notarize with `xcrun notarytool submit` and staple the ticket.
 
-Set `packagerConfig.osxSign` and `osxNotarize` in `forge.config.ts` once credentials are available.
+Set `packagerConfig.osxSign` and `osxNotarize` in `apps/desktop/forge.config.ts` once credentials are available.
 
 ## HTTP/2
 
