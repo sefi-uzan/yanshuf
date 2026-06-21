@@ -119,7 +119,7 @@ function InlinePrereqChip({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div className={cn('flex min-w-0 items-center gap-1.5', !ok && 'flex-wrap')}>
       {ok ? (
         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
       ) : (
@@ -129,7 +129,15 @@ function InlinePrereqChip({
         {label}
       </span>
       {detail && (
-        <span className="truncate text-muted-foreground">{detail}</span>
+        <span
+          className={cn(
+            'text-muted-foreground',
+            ok ? 'truncate' : 'whitespace-normal',
+          )}
+          title={detail}
+        >
+          {detail}
+        </span>
       )}
       {action}
     </div>
