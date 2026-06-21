@@ -270,6 +270,7 @@ export class ProxyServer extends EventEmitter {
         const breakpointRule = this.options.interceptEngine.findBreakpoint(info.fullUrl, 'request');
         const syncMatch = this.options.autoResponder.findMatch(info.fullUrl);
         pending.throttlePassthrough = !breakpointRule && !syncMatch;
+        this.attachSessionThrottle(pending);
 
         ctx.onRequestData((_ctx, chunk, cb) => {
           requestBody.push(chunk);
@@ -451,6 +452,7 @@ export class ProxyServer extends EventEmitter {
 
         this.applyMapRemoteIfNeeded(ctx, pending, input.url);
         pending.throttlePassthrough = true;
+        this.attachSessionThrottle(pending);
 
         void (async () => {
           await this.options.throttle?.applyLatency();
@@ -602,6 +604,11 @@ export class ProxyServer extends EventEmitter {
     }
   }
 
+  private attachSessionThrottle(pending: PendingCapture): void {
+    if (!pending.throttlePassthrough) return;
+    pending.sessionThrottle = this.options.throttle?.createSessionLimiters();
+  }
+
   private async pipeThrottledUpload(
     pending: PendingCapture,
     chunk: Buffer,
@@ -609,7 +616,7 @@ export class ProxyServer extends EventEmitter {
   ): Promise<void> {
     try {
       if (pending.throttlePassthrough) {
-        await this.options.throttle?.throttleUpload(chunk);
+        await pending.sessionThrottle?.throttleUpload(chunk);
       }
       cb(null, chunk);
     } catch (err) {
@@ -624,7 +631,7 @@ export class ProxyServer extends EventEmitter {
   ): Promise<void> {
     try {
       if (pending.throttlePassthrough) {
-        await this.options.throttle?.throttleDownload(chunk);
+        await pending.sessionThrottle?.throttleDownload(chunk);
       }
       cb(null, chunk);
     } catch (err) {

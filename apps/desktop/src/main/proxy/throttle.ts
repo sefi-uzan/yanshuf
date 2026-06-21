@@ -36,6 +36,25 @@ class BandwidthLimiter {
   }
 }
 
+/** Per-connection upload/download limiters (Fiddler-style session throttling). */
+export class SessionThrottle {
+  private uploadLimiter: BandwidthLimiter;
+  private downloadLimiter: BandwidthLimiter;
+
+  constructor(uploadKbps: number, downloadKbps: number) {
+    this.uploadLimiter = new BandwidthLimiter(uploadKbps);
+    this.downloadLimiter = new BandwidthLimiter(downloadKbps);
+  }
+
+  async throttleUpload(chunk: Buffer): Promise<void> {
+    await this.uploadLimiter.waitForBytes(chunk.length);
+  }
+
+  async throttleDownload(chunk: Buffer): Promise<void> {
+    await this.downloadLimiter.waitForBytes(chunk.length);
+  }
+}
+
 export function toThrottleConfig(settings: ThrottleSettings): ThrottleConfig {
   const resolved = resolveThrottleSettings(settings);
   return {
@@ -48,37 +67,26 @@ export function toThrottleConfig(settings: ThrottleSettings): ThrottleConfig {
 
 export class ThrottleController {
   private config: ThrottleConfig;
-  private uploadLimiter: BandwidthLimiter;
-  private downloadLimiter: BandwidthLimiter;
 
   constructor(config: ThrottleConfig) {
     this.config = config;
-    this.uploadLimiter = new BandwidthLimiter(config.uploadKbps);
-    this.downloadLimiter = new BandwidthLimiter(config.downloadKbps);
   }
 
   update(config: ThrottleConfig): void {
     this.config = config;
-    this.uploadLimiter.setKbps(config.uploadKbps);
-    this.downloadLimiter.setKbps(config.downloadKbps);
   }
 
   isEnabled(): boolean {
     return this.config.enabled;
   }
 
+  createSessionLimiters(): SessionThrottle | undefined {
+    if (!this.config.enabled) return undefined;
+    return new SessionThrottle(this.config.uploadKbps, this.config.downloadKbps);
+  }
+
   async applyLatency(): Promise<void> {
     if (!this.config.enabled || this.config.latencyMs <= 0) return;
     await sleep(this.config.latencyMs);
-  }
-
-  async throttleUpload(chunk: Buffer): Promise<void> {
-    if (!this.config.enabled) return;
-    await this.uploadLimiter.waitForBytes(chunk.length);
-  }
-
-  async throttleDownload(chunk: Buffer): Promise<void> {
-    if (!this.config.enabled) return;
-    await this.downloadLimiter.waitForBytes(chunk.length);
   }
 }
