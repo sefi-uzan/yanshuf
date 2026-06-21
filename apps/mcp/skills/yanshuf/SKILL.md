@@ -2,7 +2,7 @@
 name: yanshuf
 description: >-
   Debug HTTP/HTTPS traffic with Yanshuf via MCP. Use when inspecting captures,
-  mocking APIs, rewriting traffic, breakpoints, or replaying requests through
+  mocking APIs, rewriting traffic, map remote routing, breakpoints, or replaying requests through
   the Yanshuf proxy. Invoke with /yanshuf.
 disable-model-invocation: true
 ---
@@ -32,6 +32,7 @@ Yanshuf is a local macOS proxy debugger. Use MCP tools prefixed with `yanshuf_`.
 | `yanshuf_send_request` | Send HTTP request; optional `captureId` to replay |
 | `yanshuf_list_mock_rules` / `yanshuf_save_mock_rule` / `yanshuf_delete_mock_rule` | Mock responses |
 | `yanshuf_list_intercept_rules` / `yanshuf_save_intercept_rule` / `yanshuf_delete_intercept_rule` | Rewrite or breakpoint rules |
+| `yanshuf_list_map_remote_rules` / `yanshuf_save_map_remote_rule` / `yanshuf_delete_map_remote_rule` | Forward matching requests to another host |
 | `yanshuf_list_pending_breakpoints` / `yanshuf_continue_breakpoint` / `yanshuf_abort_breakpoint` | Breakpoint control |
 | `yanshuf_wait_for_breakpoint` | Block until breakpoint hit |
 
@@ -42,6 +43,7 @@ Detailed recipes: read files in this skill folder when needed.
 - [Inspect traffic](workflows/inspect-traffic.md)
 - [Mock an API](workflows/mock-api.md)
 - [Rewrite traffic](workflows/rewrite-traffic.md)
+- [Map Remote routing](workflows/map-remote.md)
 - [Breakpoint debugging](workflows/breakpoint-debug.md)
 
 ## Patterns
@@ -64,6 +66,12 @@ yanshuf_search_captures → yanshuf_send_request(captureId) → yanshuf_wait_for
 yanshuf_list_mock_rules → disable unrelated rules → yanshuf_save_mock_rule → trigger traffic → yanshuf_search_captures → verify matchedRuleId on summary
 ```
 
+### Map Remote
+
+```
+yanshuf_list_map_remote_rules → yanshuf_save_map_remote_rule(urlRegex, host) → trigger traffic → yanshuf_search_captures → verify mappedToUrl on summary
+```
+
 ### Breakpoint
 
 ```
@@ -80,7 +88,7 @@ yanshuf_save_intercept_rule(mode=breakpoint) → yanshuf_wait_for_breakpoint →
 
 ## Cleanup
 
-- Call `yanshuf_cleanup_session` when the user confirms debugging is done. This atomically clears captures and disables all mock/intercept rules.
+- Call `yanshuf_cleanup_session` when the user confirms debugging is done. This atomically clears captures and disables all mock, intercept, and map-remote rules.
 - A sessionEnd hook runs the same cleanup when the chat closes (installed via Yanshuf Integrations).
 
 ## Troubleshooting MCP connection

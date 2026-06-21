@@ -56,6 +56,8 @@ export class CaptureStore {
       tls: e.tls,
       protocol: e.protocol,
       matchedRuleId: e.matchedRuleId,
+      matchedMapRemoteRuleId: e.matchedMapRemoteRuleId,
+      mappedToUrl: e.mappedToUrl,
       fromComposer: e.fromComposer,
       requestBodySize: e.requestBodySize,
       responseBodySize: e.responseBodySize,
@@ -101,6 +103,8 @@ export interface PendingCapture {
   requestHeaders: Record<string, string>;
   requestBody: BodySource;
   matchedRuleId?: string;
+  matchedMapRemoteRuleId?: string;
+  mappedToUrl?: string;
   fromComposer?: boolean;
 }
 
@@ -129,6 +133,8 @@ export function buildCaptureEntry(
     tls: pending.tls,
     protocol: pending.protocol,
     matchedRuleId: pending.matchedRuleId,
+    matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
+    mappedToUrl: pending.mappedToUrl,
     fromComposer: pending.fromComposer,
     requestBodySize: pending.requestBody.total,
     responseBodySize: responseBody.total,
@@ -139,7 +145,7 @@ export function buildCaptureEntry(
       body: reqBodyRef,
     },
     server: {
-      url: pending.url,
+      url: pending.mappedToUrl ?? pending.url,
       headers: responseHeaders,
       body: resBodyRef,
     },
@@ -201,6 +207,8 @@ export function buildBreakpointCaptureEntry(
     tls: pending.tls,
     protocol: pending.protocol,
     matchedRuleId: pending.matchedRuleId,
+    matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
+    mappedToUrl: pending.mappedToUrl,
     fromComposer: pending.fromComposer,
     requestBodySize: pending.requestBody.total,
     responseBodySize,

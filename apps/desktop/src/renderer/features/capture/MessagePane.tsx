@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, PenLine, Timer, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowRightLeft, PenLine, Timer, Zap } from 'lucide-react';
 import type { CaptureEntry, HttpMessage } from '@yanshuf/shared';
 import { SyntaxHighlight } from '@/components/SyntaxHighlight';
 import { JsonViewer } from '@/components/JsonViewer';
@@ -149,13 +149,14 @@ function SourceBanner({
 }: {
   icon: typeof PenLine;
   label: string;
-  accent: 'primary' | 'amber';
+  accent: 'primary' | 'amber' | 'emerald';
 }) {
   return (
     <div className={cn(
       'flex items-center gap-2 border-b px-3 py-2 text-xs font-medium',
       accent === 'primary' && 'bg-primary/10 text-primary',
       accent === 'amber' && 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      accent === 'emerald' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
     )}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -172,6 +173,13 @@ export function RequestPane({ entry }: CaptureDetailProps) {
       )}
       {entry?.matchedRuleId && (
         <SourceBanner icon={Zap} label="Mock rule — synthetic response" accent="amber" />
+      )}
+      {entry?.mappedToUrl && (
+        <SourceBanner
+          icon={ArrowRightLeft}
+          label={`Map Remote — forwarded to ${entry.mappedToUrl}`}
+          accent="emerald"
+        />
       )}
       <div className="min-h-0 flex-1">
         <MessagePane title="Request" message={entry?.client ?? null} />

@@ -21236,6 +21236,23 @@ var YanshufApiClient = class {
   deleteInterceptRule(id) {
     return this.request("DELETE", `/rules/intercept/${encodeURIComponent(id)}`);
   }
+  listMapRemoteRules() {
+    return this.request("GET", "/rules/map-remote");
+  }
+  saveMapRemoteRule(body) {
+    const id = body.id;
+    if (id) {
+      return this.request(
+        "PUT",
+        `/rules/map-remote/${encodeURIComponent(id)}`,
+        body
+      );
+    }
+    return this.request("PUT", "/rules/map-remote", body);
+  }
+  deleteMapRemoteRule(id) {
+    return this.request("DELETE", `/rules/map-remote/${encodeURIComponent(id)}`);
+  }
   listPendingBreakpoints() {
     return this.request("GET", "/breakpoints/pending");
   }
@@ -21420,6 +21437,39 @@ function registerTools(server, client) {
       inputSchema: { id: external_exports.string() }
     },
     async ({ id }) => textResult(await client.deleteInterceptRule(id))
+  );
+  server.registerTool(
+    "yanshuf_list_map_remote_rules",
+    {
+      description: "List Map Remote rules that forward matching requests to another host.",
+      inputSchema: {}
+    },
+    async () => textResult(await client.listMapRemoteRules())
+  );
+  server.registerTool(
+    "yanshuf_save_map_remote_rule",
+    {
+      description: "Create or update a Map Remote rule. Optionally pass captureId to bootstrap match from a capture.",
+      inputSchema: {
+        id: external_exports.string().optional(),
+        captureId: external_exports.string().optional(),
+        name: external_exports.string().optional(),
+        enabled: external_exports.boolean().optional(),
+        urlRegex: external_exports.string().optional(),
+        host: external_exports.string().optional(),
+        port: external_exports.number().optional(),
+        protocol: external_exports.enum(["http", "https"]).optional()
+      }
+    },
+    async (args) => textResult(await client.saveMapRemoteRule(args))
+  );
+  server.registerTool(
+    "yanshuf_delete_map_remote_rule",
+    {
+      description: "Delete a Map Remote rule by ID.",
+      inputSchema: { id: external_exports.string() }
+    },
+    async ({ id }) => textResult(await client.deleteMapRemoteRule(id))
   );
   server.registerTool(
     "yanshuf_list_pending_breakpoints",

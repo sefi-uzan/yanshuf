@@ -5,7 +5,9 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./capture-to-rule": "./src/capture-to-rule.ts",
+    "./map-remote-url": "./src/map-remote-url.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -101,6 +101,7 @@ export class YanshufApiClient {
       entryCount: number;
       disabledMockCount: number;
       disabledInterceptCount: number;
+      disabledMapRemoteCount: number;
     }>('POST', '/session/cleanup');
   }
 
@@ -163,6 +164,26 @@ export class YanshufApiClient {
 
   deleteInterceptRule(id: string) {
     return this.request<{ ok: boolean }>('DELETE', `/rules/intercept/${encodeURIComponent(id)}`);
+  }
+
+  listMapRemoteRules() {
+    return this.request<{ rules: unknown[] }>('GET', '/rules/map-remote');
+  }
+
+  saveMapRemoteRule(body: Record<string, unknown>) {
+    const id = body.id as string | undefined;
+    if (id) {
+      return this.request<Record<string, unknown>>(
+        'PUT',
+        `/rules/map-remote/${encodeURIComponent(id)}`,
+        body,
+      );
+    }
+    return this.request<Record<string, unknown>>('PUT', '/rules/map-remote', body);
+  }
+
+  deleteMapRemoteRule(id: string) {
+    return this.request<{ ok: boolean }>('DELETE', `/rules/map-remote/${encodeURIComponent(id)}`);
   }
 
   listPendingBreakpoints() {

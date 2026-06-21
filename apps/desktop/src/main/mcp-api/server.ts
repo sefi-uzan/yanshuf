@@ -204,6 +204,34 @@ export class McpApiServer {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/rules/map-remote') {
+        sendJson(res, 200, { rules: await this.handlers.listMapRemoteRules() });
+        return;
+      }
+
+      const mapRemoteRuleMatch = url.pathname.match(/^\/rules\/map-remote\/([^/]+)$/);
+      if (mapRemoteRuleMatch) {
+        const id = decodeURIComponent(mapRemoteRuleMatch[1]!);
+        if (method === 'PUT') {
+          const raw = await readBody(req);
+          const body = raw ? JSON.parse(raw) : {};
+          sendJson(res, 200, await this.handlers.saveMapRemoteRule({ ...body, id }));
+          return;
+        }
+        if (method === 'DELETE') {
+          await this.handlers.deleteMapRemoteRule(id);
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+      }
+
+      if (method === 'PUT' && url.pathname === '/rules/map-remote') {
+        const raw = await readBody(req);
+        const body = raw ? JSON.parse(raw) : {};
+        sendJson(res, 200, await this.handlers.saveMapRemoteRule(body));
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/breakpoints/pending') {
         sendJson(res, 200, { breakpoints: await this.handlers.listPendingBreakpoints() });
         return;

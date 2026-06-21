@@ -6,6 +6,7 @@ import type {
   ComposerResponse,
   InterceptModifications,
   InterceptRule,
+  MapRemoteRule,
 } from './types';
 
 export const MCP_DEFAULT_PORT = 9473;
@@ -33,6 +34,7 @@ export interface SessionCleanupResult {
   entryCount: number;
   disabledMockCount: number;
   disabledInterceptCount: number;
+  disabledMapRemoteCount: number;
 }
 
 export interface CaptureSearchParams {
@@ -87,6 +89,17 @@ export interface InterceptRuleSaveBody {
   captureId?: string;
 }
 
+export interface MapRemoteRuleSaveBody {
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  urlRegex?: string;
+  host?: string;
+  port?: number;
+  protocol?: 'http' | 'https';
+  captureId?: string;
+}
+
 export interface BreakpointContinueBody {
   headers?: Record<string, string>;
   body?: string;
@@ -119,6 +132,9 @@ export interface McpApiHandlers {
   listInterceptRules: () => Promise<InterceptRule[]>;
   saveInterceptRule: (body: InterceptRuleSaveBody) => Promise<InterceptRule>;
   deleteInterceptRule: (id: string) => Promise<void>;
+  listMapRemoteRules: () => Promise<MapRemoteRule[]>;
+  saveMapRemoteRule: (body: MapRemoteRuleSaveBody) => Promise<MapRemoteRule>;
+  deleteMapRemoteRule: (id: string) => Promise<void>;
   listPendingBreakpoints: () => Promise<CaptureEntrySummary[]>;
   continueBreakpoint: (id: string, body?: BreakpointContinueBody) => Promise<void>;
   abortBreakpoint: (id: string) => Promise<void>;

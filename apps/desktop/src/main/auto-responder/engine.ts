@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import type { AutoResponderRule } from '@yanshuf/shared';
+import { matchesUrlRegex } from '@yanshuf/shared';
 
 export class AutoResponderEngine {
   private rules: AutoResponderRule[] = [];
@@ -21,13 +22,7 @@ export class AutoResponderEngine {
   }
 
   private matchesUrl(rule: AutoResponderRule, url: string): boolean {
-    const pattern = rule.match.urlRegex?.trim();
-    if (!pattern) return false;
-    try {
-      return new RegExp(pattern, 'i').test(url);
-    } catch {
-      return false;
-    }
+    return matchesUrlRegex(rule.match.urlRegex, url);
   }
 
   async buildResponse(rule: AutoResponderRule): Promise<{

@@ -29,6 +29,8 @@ export interface CaptureEntrySummary {
   tls: boolean;
   protocol: Protocol;
   matchedRuleId?: string;
+  matchedMapRemoteRuleId?: string;
+  mappedToUrl?: string;
   fromComposer?: boolean;
   requestBodySize: number;
   responseBodySize: number;
@@ -59,6 +61,21 @@ export interface InterceptModifications {
   headers?: Record<string, string>;
   body?: string;
   status?: number;
+}
+
+export interface MapRemoteRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  order: number;
+  match: {
+    urlRegex?: string;
+  };
+  mapTo: {
+    host: string;
+    port?: number;
+    protocol?: 'http' | 'https';
+  };
 }
 
 export interface InterceptRule {
@@ -197,6 +214,8 @@ export const IPC_CHANNELS = {
   RULES_SAVE: 'rules:save',
   INTERCEPT_GET: 'intercept:get',
   INTERCEPT_SAVE: 'intercept:save',
+  MAP_REMOTE_GET: 'map-remote:get',
+  MAP_REMOTE_SAVE: 'map-remote:save',
   BREAKPOINT_CONTINUE: 'breakpoint:continue',
   BREAKPOINT_ABORT: 'breakpoint:abort',
   BREAKPOINT_HIT: 'breakpoint:hit',

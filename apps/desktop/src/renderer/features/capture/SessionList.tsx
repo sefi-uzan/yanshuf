@@ -14,7 +14,7 @@ import { Badge ,
 import { cn } from '@yanshuf/ui/lib/utils';
 import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
 import { captureToComposerRequest , formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
-import { Copy, Ellipsis, Lock, PauseCircle, PenLine, Zap } from 'lucide-react';
+import { Copy, Ellipsis, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
 
 interface SessionListProps {
   entries: CaptureEntrySummary[];
@@ -24,6 +24,7 @@ interface SessionListProps {
   draggable?: boolean;
   onAddToComposer?: (id: string) => void;
   onCreateRule?: (id: string) => void;
+  onCreateMapRemoteRule?: (id: string) => void;
 }
 
 function statusVariant(status: number): 'success' | 'warning' | 'error' | 'secondary' {
@@ -55,6 +56,7 @@ export function SessionList({
   draggable,
   onAddToComposer,
   onCreateRule,
+  onCreateMapRemoteRule,
 }: SessionListProps) {
   const filtered = useMemo(
     () => entries.filter((e) => matchesSearch(e, searchQuery)),
@@ -107,6 +109,7 @@ export function SessionList({
           {virtualizer.getVirtualItems().map((virtualRow) => {
               const entry = filtered[virtualRow.index];
               const isAutoResponded = Boolean(entry.matchedRuleId);
+              const isMapRemote = Boolean(entry.matchedMapRemoteRuleId);
               const isAwaitingBreakpoint = Boolean(entry.awaitingBreakpoint);
               const isFromComposer = Boolean(entry.fromComposer);
               return (
@@ -134,6 +137,8 @@ export function SessionList({
                         ? 'Paused at breakpoint'
                       : isAutoResponded
                         ? 'Matched by Auto Responder'
+                        : isMapRemote
+                          ? 'Forwarded via Map Remote'
                         : isFromComposer
                           ? 'Sent from Composer'
                           : undefined
@@ -143,11 +148,13 @@ export function SessionList({
                     SESSION_LIST_GRID,
                     isAwaitingBreakpoint && 'border-l-2 border-l-sky-500 bg-sky-500/[0.08] hover:bg-sky-500/15',
                     isAutoResponded && !isAwaitingBreakpoint && 'border-l-2 border-l-amber-500 bg-amber-500/[0.08] hover:bg-amber-500/15',
-                    isFromComposer && !isAutoResponded && !isAwaitingBreakpoint && 'border-l-2 border-l-primary bg-primary/[0.08] hover:bg-primary/15',
-                    selectedId === entry.id && !isAutoResponded && !isFromComposer && !isAwaitingBreakpoint && 'bg-accent',
+                    isMapRemote && !isAutoResponded && !isAwaitingBreakpoint && 'border-l-2 border-l-emerald-500 bg-emerald-500/[0.08] hover:bg-emerald-500/15',
+                    isFromComposer && !isAutoResponded && !isMapRemote && !isAwaitingBreakpoint && 'border-l-2 border-l-primary bg-primary/[0.08] hover:bg-primary/15',
+                    selectedId === entry.id && !isAutoResponded && !isFromComposer && !isMapRemote && !isAwaitingBreakpoint && 'bg-accent',
                     selectedId === entry.id && isAwaitingBreakpoint && 'bg-sky-500/20',
                     selectedId === entry.id && isAutoResponded && !isAwaitingBreakpoint && 'bg-amber-500/20',
-                    selectedId === entry.id && isFromComposer && !isAutoResponded && !isAwaitingBreakpoint && 'bg-primary/20',
+                    selectedId === entry.id && isMapRemote && !isAutoResponded && !isAwaitingBreakpoint && 'bg-emerald-500/20',
+                    selectedId === entry.id && isFromComposer && !isAutoResponded && !isMapRemote && !isAwaitingBreakpoint && 'bg-primary/20',
                   )}
                   style={{
                     height: `${virtualRow.size}px`,
@@ -169,7 +176,10 @@ export function SessionList({
                     {isAutoResponded && !isAwaitingBreakpoint && (
                       <Zap className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
                     )}
-                    {isFromComposer && !isAutoResponded && (
+                    {isMapRemote && !isAutoResponded && !isAwaitingBreakpoint && (
+                      <ArrowRightLeft className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    )}
+                    {isFromComposer && !isAutoResponded && !isMapRemote && (
                       <PenLine className="h-3 w-3 shrink-0 text-primary" />
                     )}
                     {entry.tls && <Lock className="h-3 w-3 shrink-0" />}
@@ -205,7 +215,11 @@ export function SessionList({
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => onCreateRule?.(entry.id)}>
                           <Zap className="mr-2 h-4 w-4" />
-                          Create Rule
+                          Create Mock Rule
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onCreateMapRemoteRule?.(entry.id)}>
+                          <ArrowRightLeft className="mr-2 h-4 w-4" />
+                          Create Map Remote Rule
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuSub>
@@ -250,6 +264,11 @@ export function SessionList({
         {entries.some((e) => e.matchedRuleId) && (
           <span className="ml-2 text-amber-600 dark:text-amber-400">
             · {entries.filter((e) => e.matchedRuleId).length} mocked
+          </span>
+        )}
+        {entries.some((e) => e.matchedMapRemoteRuleId) && (
+          <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+            · {entries.filter((e) => e.matchedMapRemoteRuleId).length} mapped
           </span>
         )}
         {entries.some((e) => e.fromComposer) && (

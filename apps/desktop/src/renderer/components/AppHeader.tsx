@@ -55,7 +55,7 @@ export function AppHeader({
         >
           <Zap className="mr-1 h-3.5 w-3.5" />
           Rules
-          <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-1.5" reserveSpace />
+          <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-1.5" />
         </Button>
 
         <Button
@@ -66,7 +66,7 @@ export function AppHeader({
         >
           <PenLine className="mr-1 h-3.5 w-3.5" />
           Composer
-          <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-1.5" reserveSpace />
+          <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-1.5" />
         </Button>
 
         <ToolbarDivider />
@@ -74,7 +74,7 @@ export function AppHeader({
         <Button variant="ghost" size="sm" className="h-7 rounded-[7px] px-2.5" onClick={onOpenSettings}>
           <Settings className="mr-1 h-3.5 w-3.5" />
           Settings
-          <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-1.5" reserveSpace />
+          <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-1.5" />
         </Button>
       </div>
     </header>

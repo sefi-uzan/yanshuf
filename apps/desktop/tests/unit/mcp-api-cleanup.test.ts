@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AutoResponderEngine } from '../../src/main/auto-responder/engine';
 import { InterceptEngine } from '../../src/main/intercept/engine';
+import { MapRemoteEngine } from '../../src/main/map-remote/engine';
 import { CaptureStore } from '../../src/main/proxy/capture-store';
 import { createMcpHandlers } from '../../src/main/mcp-api/create-handlers';
 import type { McpHandlerDeps } from '../../src/main/mcp-api/create-handlers';
@@ -40,6 +41,18 @@ function minimalDeps(): McpHandlerDeps {
     },
   ]);
 
+  const mapRemoteEngine = new MapRemoteEngine();
+  mapRemoteEngine.setRules([
+    {
+      id: 'map-1',
+      name: 'Staging',
+      enabled: true,
+      order: 0,
+      match: { urlRegex: '.*' },
+      mapTo: { host: 'localhost' },
+    },
+  ]);
+
   const writes: Record<string, unknown> = {};
   return {
     settings: {
@@ -54,6 +67,7 @@ function minimalDeps(): McpHandlerDeps {
     captureStore,
     autoResponder,
     interceptEngine,
+    mapRemoteEngine,
     breakpointManager: { continue: () => false, abort: () => false } as McpHandlerDeps['breakpointManager'],
     proxyServer: { isRunning: () => false, start: async () => {}, stop: async () => {} } as McpHandlerDeps['proxyServer'],
     certManager: { verifyTrust: async () => ({ trusted: true }) } as McpHandlerDeps['certManager'],
@@ -78,9 +92,11 @@ describe('cleanupSession', () => {
       entryCount: 0,
       disabledMockCount: 1,
       disabledInterceptCount: 1,
+      disabledMapRemoteCount: 1,
     });
     expect(deps.autoResponder.getRules().find((r) => r.id === 'mock-1')?.enabled).toBe(false);
     expect(deps.autoResponder.getRules().find((r) => r.id === 'mock-2')?.enabled).toBe(false);
     expect(deps.interceptEngine.getRules()[0]?.enabled).toBe(false);
+    expect(deps.mapRemoteEngine.getRules()[0]?.enabled).toBe(false);
   });
 });
