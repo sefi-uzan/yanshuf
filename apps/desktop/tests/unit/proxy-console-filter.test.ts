@@ -8,6 +8,15 @@ describe('isBenignProxyError', () => {
     expect(isBenignProxyError(Object.assign(new Error('Request timeout'), { code: 'ERR_HTTP_REQUEST_TIMEOUT' }), 'HTTPS_CLIENT_ERROR')).toBe(true);
   });
 
+  it('treats client abort and unsupported TLS as benign', () => {
+    expect(
+      isBenignProxyError(Object.assign(new Error('write after end'), { code: 'ERR_STREAM_WRITE_AFTER_END' }), 'PROXY_TO_CLIENT_RESPONSE_ERROR'),
+    ).toBe(true);
+    expect(
+      isBenignProxyError(Object.assign(new Error('unsupported protocol'), { code: 'ERR_SSL_UNSUPPORTED_PROTOCOL' }), 'HTTPS_CLIENT_ERROR'),
+    ).toBe(true);
+  });
+
   it('treats HTTP/2 and truncated gzip noise as benign', () => {
     expect(isBenignProxyError(Object.assign(new Error('Parse Error: Invalid method encountered'), { code: 'HPE_INVALID_METHOD' }), 'HTTPS_CLIENT_ERROR')).toBe(true);
     expect(isBenignProxyError(Object.assign(new Error('unexpected end of file'), { code: 'Z_BUF_ERROR' }), 'RESPONSE_FILTER_ERROR')).toBe(true);

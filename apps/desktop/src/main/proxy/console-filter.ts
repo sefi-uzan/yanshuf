@@ -29,7 +29,13 @@ export function isBenignProxyError(err: unknown, kind?: string): boolean {
   const code = (err as NodeJS.ErrnoException).code;
   const message = err.message.toLowerCase();
 
-  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'ERR_HTTP_REQUEST_TIMEOUT') {
+  if (
+    code === 'ECONNRESET' ||
+    code === 'EPIPE' ||
+    code === 'ERR_HTTP_REQUEST_TIMEOUT' ||
+    code === 'ERR_STREAM_WRITE_AFTER_END' ||
+    code === 'ERR_SSL_UNSUPPORTED_PROTOCOL'
+  ) {
     return true;
   }
 
