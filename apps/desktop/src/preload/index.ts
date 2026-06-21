@@ -24,6 +24,7 @@ import type {
   ProxyStatus,
   SkillInstallTarget,
   AppNotifyPayload,
+  ThrottleSetPatch,
 } from '@yanshuf/shared';
 import { IPC_CHANNELS } from '@yanshuf/shared';
 
@@ -32,6 +33,7 @@ export interface YanshufAPI {
     start: () => Promise<ProxyStatus>;
     stop: () => Promise<ProxyStatus>;
     status: () => Promise<ProxyStatus>;
+    setThrottle: (patch: ThrottleSetPatch | null) => Promise<ProxyStatus>;
   };
   capture: {
     list: () => Promise<CaptureEntrySummary[]>;
@@ -129,6 +131,7 @@ const api: YanshufAPI = {
     start: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_START),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP),
     status: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS),
+    setThrottle: (patch) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_THROTTLE_SET, patch),
   },
   capture: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_LIST),

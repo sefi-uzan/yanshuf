@@ -7,7 +7,9 @@ import type {
   InterceptModifications,
   InterceptRule,
   MapRemoteRule,
+  ThrottleSettings,
 } from './types';
+import type { ThrottleSetPatch } from './types';
 
 export const MCP_DEFAULT_PORT = 9473;
 export const MCP_CAPTURE_SEARCH_MAX_LIMIT = 100;
@@ -28,7 +30,10 @@ export interface YanshufStatus {
   entryCount: number;
   certTrusted: boolean;
   mcpApiPort: number;
+  throttle: ThrottleSettings;
 }
+
+export type ThrottleSetBody = ThrottleSetPatch;
 
 export interface SessionCleanupResult {
   entryCount: number;
@@ -139,6 +144,7 @@ export interface McpApiHandlers {
   continueBreakpoint: (id: string, body?: BreakpointContinueBody) => Promise<void>;
   abortBreakpoint: (id: string) => Promise<void>;
   waitForBreakpoint: (params: { timeoutMs?: number }) => Promise<BreakpointWaitResult>;
+  setThrottle: (body: ThrottleSetBody | null) => Promise<YanshufStatus>;
 }
 
 export type ComposerSendBodyWithRequest = ComposerSendBody & { request?: ComposerRequest };

@@ -20,12 +20,14 @@ import type {
   CaptureWaitParams,
   YanshufStatus,
   McpApiHandlers,
+  ThrottleSetPatch,
 } from '@yanshuf/shared';
 import {
   captureToAutoResponderRule,
   captureToMapRemoteRule,
   captureToComposerRequest,
   searchCaptures as filterCaptures,
+  resolveThrottleSettings,
 } from '@yanshuf/shared';
 import type { AutoResponderEngine } from '../auto-responder/engine';
 import type { BreakpointManager } from '../intercept/breakpoint-manager';
@@ -57,6 +59,7 @@ export interface McpHandlerDeps {
   mcpApiPort: number;
   broadcastCaptureUpdate: (immediate?: boolean) => void;
   tagComposerCaptures: (beforeIds: Set<string>, req: ComposerRequest) => void;
+  mergeAndApplyThrottle: (patch: ThrottleSetPatch | null) => void;
 }
 
 async function isCertTrusted(certManager: CertificateManager): Promise<boolean> {
@@ -74,6 +77,7 @@ function buildStatus(
     entryCount: deps.captureStore.count,
     certTrusted,
     mcpApiPort: deps.mcpApiPort,
+    throttle: resolveThrottleSettings(deps.settings.throttle),
   };
 }
 
@@ -97,7 +101,9 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         await deps.systemProxy.disable();
         deps.settings.systemProxyEnabled = false;
       } else {
-        await deps.systemProxy.enable('127.0.0.1', deps.settings.port);
+        await deps.systemProxy.enable('127.0.0.1', deps.settings.port, {
+          captureLocalhost: deps.settings.captureLocalhost,
+        });
         deps.settings.systemProxyEnabled = true;
         await assertCertTrusted(deps.certManager);
         await deps.proxyServer.start();
@@ -418,6 +424,13 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
           url: snapshot.url,
         },
       };
+    },
+
+    async setThrottle(body) {
+      deps.mergeAndApplyThrottle(body);
+      await deps.saveSettings();
+      const certTrusted = await isCertTrusted(deps.certManager);
+      return buildStatus(deps, certTrusted);
     },
   };
 }

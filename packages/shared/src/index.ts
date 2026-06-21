@@ -4,6 +4,8 @@ export * from './http';
 export * from './composer';
 export * from './composer-curl';
 export * from './url-filter';
+export * from './localhost';
+export * from './throttle';
 export * from './json';
 export * from './shortcuts';
 export * from './dnd';

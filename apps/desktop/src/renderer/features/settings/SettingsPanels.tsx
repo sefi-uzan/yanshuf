@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { CaptureFilterMode, CertStatus } from '@yanshuf/shared';
+import type { CaptureFilterMode, CertStatus, ThrottlePreset } from '@yanshuf/shared';
 import { DEFAULT_SETTINGS } from '@yanshuf/shared';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
 import { useShortcutHints } from '@/components/shortcut-hints';
@@ -28,6 +28,7 @@ interface SettingsPanelProps {
 }
 
 const BYTES_PER_MB = 1024 * 1024;
+const LOCALHOST_HINT_KEY = 'yanshuf.localhost-hint-shown';
 
 function bytesToMb(bytes: number): number {
   return Math.round(bytes / BYTES_PER_MB);
@@ -63,11 +64,27 @@ export function SettingsPanel({
   const [maxBodySizeMb, setMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
   const [filterMode, setFilterMode] = useState<CaptureFilterMode>('exclude');
   const [filterUrls, setFilterUrls] = useState('');
+  const [captureLocalhost, setCaptureLocalhost] = useState(DEFAULT_SETTINGS.captureLocalhost);
+  const [throttleEnabled, setThrottleEnabled] = useState(DEFAULT_SETTINGS.throttle.enabled);
+  const [throttlePreset, setThrottlePreset] = useState<ThrottlePreset>(DEFAULT_SETTINGS.throttle.preset);
+  const [throttleLatencyMs, setThrottleLatencyMs] = useState(DEFAULT_SETTINGS.throttle.latencyMs);
+  const [throttleDownloadKbps, setThrottleDownloadKbps] = useState(DEFAULT_SETTINGS.throttle.downloadKbps);
+  const [throttleUploadKbps, setThrottleUploadKbps] = useState(DEFAULT_SETTINGS.throttle.uploadKbps);
   const [initialPort, setInitialPort] = useState(DEFAULT_SETTINGS.port);
   const [initialRingBufferSize, setInitialRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
   const [initialMaxBodySizeMb, setInitialMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
   const [initialFilterMode, setInitialFilterMode] = useState<CaptureFilterMode>('exclude');
   const [initialFilterUrls, setInitialFilterUrls] = useState('');
+  const [initialCaptureLocalhost, setInitialCaptureLocalhost] = useState(DEFAULT_SETTINGS.captureLocalhost);
+  const [initialThrottleEnabled, setInitialThrottleEnabled] = useState(DEFAULT_SETTINGS.throttle.enabled);
+  const [initialThrottlePreset, setInitialThrottlePreset] = useState<ThrottlePreset>(DEFAULT_SETTINGS.throttle.preset);
+  const [initialThrottleLatencyMs, setInitialThrottleLatencyMs] = useState(DEFAULT_SETTINGS.throttle.latencyMs);
+  const [initialThrottleDownloadKbps, setInitialThrottleDownloadKbps] = useState(
+    DEFAULT_SETTINGS.throttle.downloadKbps,
+  );
+  const [initialThrottleUploadKbps, setInitialThrottleUploadKbps] = useState(
+    DEFAULT_SETTINGS.throttle.uploadKbps,
+  );
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
   const [saving, setSaving] = useState(false);
   const [integrationClient, setIntegrationClient] = useState<IntegrationClient | null>(null);
@@ -82,11 +99,23 @@ export function SettingsPanel({
         setMaxBodySizeMb(bytesToMb(s.maxBodySize));
         setFilterMode(s.captureFilter.mode);
         setFilterUrls(s.captureFilter.urls);
+        setCaptureLocalhost(s.captureLocalhost);
+        setThrottleEnabled(s.throttle.enabled);
+        setThrottlePreset(s.throttle.preset);
+        setThrottleLatencyMs(s.throttle.latencyMs);
+        setThrottleDownloadKbps(s.throttle.downloadKbps);
+        setThrottleUploadKbps(s.throttle.uploadKbps);
         setInitialPort(s.port);
         setInitialRingBufferSize(s.ringBufferSize);
         setInitialMaxBodySizeMb(bytesToMb(s.maxBodySize));
         setInitialFilterMode(s.captureFilter.mode);
         setInitialFilterUrls(s.captureFilter.urls);
+        setInitialCaptureLocalhost(s.captureLocalhost);
+        setInitialThrottleEnabled(s.throttle.enabled);
+        setInitialThrottlePreset(s.throttle.preset);
+        setInitialThrottleLatencyMs(s.throttle.latencyMs);
+        setInitialThrottleDownloadKbps(s.throttle.downloadKbps);
+        setInitialThrottleUploadKbps(s.throttle.uploadKbps);
       });
     }
   }, [open, defaultTab]);
@@ -97,18 +126,36 @@ export function SettingsPanel({
       ringBufferSize !== initialRingBufferSize ||
       maxBodySizeMb !== initialMaxBodySizeMb ||
       filterMode !== initialFilterMode ||
-      filterUrls !== initialFilterUrls,
+      filterUrls !== initialFilterUrls ||
+      captureLocalhost !== initialCaptureLocalhost ||
+      throttleEnabled !== initialThrottleEnabled ||
+      throttlePreset !== initialThrottlePreset ||
+      throttleLatencyMs !== initialThrottleLatencyMs ||
+      throttleDownloadKbps !== initialThrottleDownloadKbps ||
+      throttleUploadKbps !== initialThrottleUploadKbps,
     [
       port,
       ringBufferSize,
       maxBodySizeMb,
       filterMode,
       filterUrls,
+      captureLocalhost,
+      throttleEnabled,
+      throttlePreset,
+      throttleLatencyMs,
+      throttleDownloadKbps,
+      throttleUploadKbps,
       initialPort,
       initialRingBufferSize,
       initialMaxBodySizeMb,
       initialFilterMode,
       initialFilterUrls,
+      initialCaptureLocalhost,
+      initialThrottleEnabled,
+      initialThrottlePreset,
+      initialThrottleLatencyMs,
+      initialThrottleDownloadKbps,
+      initialThrottleUploadKbps,
     ],
   );
 
@@ -118,12 +165,19 @@ export function SettingsPanel({
     setMaxBodySizeMb(initialMaxBodySizeMb);
     setFilterMode(initialFilterMode);
     setFilterUrls(initialFilterUrls);
+    setCaptureLocalhost(initialCaptureLocalhost);
+    setThrottleEnabled(initialThrottleEnabled);
+    setThrottlePreset(initialThrottlePreset);
+    setThrottleLatencyMs(initialThrottleLatencyMs);
+    setThrottleDownloadKbps(initialThrottleDownloadKbps);
+    setThrottleUploadKbps(initialThrottleUploadKbps);
   };
 
   const save = useCallback(async () => {
     setSaving(true);
     try {
       const filtersChanged = filterMode !== initialFilterMode || filterUrls !== initialFilterUrls;
+      const localhostNewlyEnabled = captureLocalhost && !initialCaptureLocalhost;
       const current = await window.yanshuf.settings.get();
       await window.yanshuf.settings.save({
         ...current,
@@ -134,16 +188,37 @@ export function SettingsPanel({
           mode: filterMode,
           urls: filterUrls,
         },
+        captureLocalhost,
+        throttle: {
+          enabled: throttleEnabled,
+          preset: throttlePreset,
+          latencyMs: throttleLatencyMs,
+          downloadKbps: throttleDownloadKbps,
+          uploadKbps: throttleUploadKbps,
+        },
       });
       setInitialPort(port);
       setInitialRingBufferSize(ringBufferSize);
       setInitialMaxBodySizeMb(maxBodySizeMb);
       setInitialFilterMode(filterMode);
       setInitialFilterUrls(filterUrls);
+      setInitialCaptureLocalhost(captureLocalhost);
+      setInitialThrottleEnabled(throttleEnabled);
+      setInitialThrottlePreset(throttlePreset);
+      setInitialThrottleLatencyMs(throttleLatencyMs);
+      setInitialThrottleDownloadKbps(throttleDownloadKbps);
+      setInitialThrottleUploadKbps(throttleUploadKbps);
       if (filtersChanged) {
         await clearCapturedRequests({ toast: false });
       }
-      notifySaved('Settings');
+      if (localhostNewlyEnabled && !localStorage.getItem(LOCALHOST_HINT_KEY)) {
+        localStorage.setItem(LOCALHOST_HINT_KEY, '1');
+        notifySaved(
+          'Localhost capture enabled. Some apps still bypass localhost — point them at the proxy if traffic does not appear.',
+        );
+      } else {
+        notifySaved('Settings');
+      }
       onOpenChange(false);
     } catch (error) {
       notifyActionFailed('save settings', error);
@@ -151,14 +226,26 @@ export function SettingsPanel({
       setSaving(false);
     }
   }, [
+    captureLocalhost,
     filterMode,
     filterUrls,
+    initialCaptureLocalhost,
     initialFilterMode,
     initialFilterUrls,
+    initialThrottleDownloadKbps,
+    initialThrottleEnabled,
+    initialThrottleLatencyMs,
+    initialThrottlePreset,
+    initialThrottleUploadKbps,
     maxBodySizeMb,
     onOpenChange,
     port,
     ringBufferSize,
+    throttleDownloadKbps,
+    throttleEnabled,
+    throttleLatencyMs,
+    throttlePreset,
+    throttleUploadKbps,
   ]);
 
   useEffect(() => {
@@ -225,11 +312,23 @@ export function SettingsPanel({
                   maxBodySizeMb={maxBodySizeMb}
                   filterMode={filterMode}
                   filterUrls={filterUrls}
+                  captureLocalhost={captureLocalhost}
+                  throttleEnabled={throttleEnabled}
+                  throttlePreset={throttlePreset}
+                  throttleLatencyMs={throttleLatencyMs}
+                  throttleDownloadKbps={throttleDownloadKbps}
+                  throttleUploadKbps={throttleUploadKbps}
                   onPortChange={setPort}
                   onRingBufferSizeChange={setRingBufferSize}
                   onMaxBodySizeMbChange={setMaxBodySizeMb}
                   onFilterModeChange={setFilterMode}
                   onFilterUrlsChange={setFilterUrls}
+                  onCaptureLocalhostChange={setCaptureLocalhost}
+                  onThrottleEnabledChange={setThrottleEnabled}
+                  onThrottlePresetChange={setThrottlePreset}
+                  onThrottleLatencyMsChange={setThrottleLatencyMs}
+                  onThrottleDownloadKbpsChange={setThrottleDownloadKbps}
+                  onThrottleUploadKbpsChange={setThrottleUploadKbps}
                 />
               </TabsContent>
 

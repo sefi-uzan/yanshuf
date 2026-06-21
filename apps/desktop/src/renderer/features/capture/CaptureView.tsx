@@ -135,6 +135,26 @@ export function CaptureView({
     void clearCapturedRequests();
   };
 
+  const toggleThrottle = async () => {
+    try {
+      const enabled = !(status?.throttle.enabled ?? false);
+      const next = await window.yanshuf.proxy.setThrottle({ enabled });
+      setStatus(next);
+    } catch (err) {
+      notifyActionFailed('toggle throttling', err);
+    }
+  };
+
+  const throttleLabel = (() => {
+    if (!status?.throttle.enabled) return 'Throttle';
+    const preset = status.throttle.preset;
+    if (preset === '3g') return '3G';
+    if (preset === 'edge') return 'Edge';
+    if (preset === 'regular-3g') return 'Reg 3G';
+    if (preset === 'regular-4g') return 'Reg 4G';
+    return 'Throttle';
+  })();
+
   return (
     <div className="flex h-full flex-col">
       {detailMode === 'capture' && selectedEntry && (
@@ -196,6 +216,8 @@ export function CaptureView({
         integrationStatus={integrationStatus}
         onToggleProxy={toggleProxy}
         onToggleSystemProxy={toggleSystemProxy}
+        onToggleThrottle={toggleThrottle}
+        throttleLabel={throttleLabel}
         onClear={clearSession}
         onOpenCertificateSettings={onOpenCertificateSettings}
         onOpenAiSettings={onOpenAiSettings}
@@ -211,6 +233,8 @@ function StatusBar({
   integrationStatus,
   onToggleProxy,
   onToggleSystemProxy,
+  onToggleThrottle,
+  throttleLabel,
   onClear,
   onOpenCertificateSettings,
   onOpenAiSettings,
@@ -221,6 +245,8 @@ function StatusBar({
   integrationStatus: IntegrationAggregateStatus;
   onToggleProxy: () => void;
   onToggleSystemProxy: () => void;
+  onToggleThrottle: () => void;
+  throttleLabel: string;
   onClear: () => void;
   onOpenCertificateSettings?: () => void;
   onOpenAiSettings?: () => void;
@@ -257,6 +283,11 @@ function StatusBar({
           label="System Proxy"
           active={status?.systemProxyEnabled ?? false}
           onToggle={onToggleSystemProxy}
+        />
+        <StatusToggle
+          label={throttleLabel}
+          active={status?.throttle.enabled ?? false}
+          onToggle={onToggleThrottle}
         />
       </div>
       <button

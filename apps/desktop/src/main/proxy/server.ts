@@ -27,8 +27,11 @@ import { headersToRecord ,
 } from '@yanshuf/shared';
 import type { InterceptRule } from '@yanshuf/shared';
 import { installProxyConsoleFilter, isBenignProxyError, isExpectedUpstreamError, formatUpstreamError, uninstallProxyConsoleFilter } from './console-filter';
+import type { ThrottleController } from './throttle';
 
 type ProxyContext = Parameters<Parameters<Proxy['onRequest']>[0]>[0];
+
+type ThrottleCallback = (error?: Error | null, chunk?: Buffer) => void;
 
 export interface ProxyServerOptions {
   port: number;
@@ -40,7 +43,8 @@ export interface ProxyServerOptions {
   interceptEngine: InterceptEngine;
   mapRemoteEngine: MapRemoteEngine;
   breakpointManager: BreakpointManager;
-  shouldCapture?: (url: string) => boolean;
+  shouldCapture?: (url: string, host: string) => boolean;
+  throttle?: ThrottleController;
 }
 
 /** Discard pending captures whose connections never completed after this long. */
@@ -258,9 +262,18 @@ export class ProxyServer extends EventEmitter {
 
         this.pending.set(id, pending);
 
+        const rewriteRule = this.options.interceptEngine.findRewrite(info.fullUrl, 'request');
+        if (rewriteRule) {
+          applyRequestRewrite(ctx, rewriteRule);
+        }
+
+        const breakpointRule = this.options.interceptEngine.findBreakpoint(info.fullUrl, 'request');
+        const syncMatch = this.options.autoResponder.findMatch(info.fullUrl);
+        pending.throttlePassthrough = !breakpointRule && !syncMatch;
+
         ctx.onRequestData((_ctx, chunk, cb) => {
           requestBody.push(chunk);
-          cb(null, chunk);
+          void this.pipeThrottledUpload(pending, chunk, cb);
         });
 
         ctx.onRequestEnd((_ctx, cb) => {
@@ -270,7 +283,7 @@ export class ProxyServer extends EventEmitter {
         const responseBody = new CappedBuffer(maxBodySize);
         ctx.onResponseData((_ctx, chunk, cb) => {
           responseBody.push(chunk);
-          cb(null, chunk);
+          void this.pipeThrottledDownload(pending, chunk, cb);
         });
 
         ctx.onResponseEnd((_ctx, cb) => {
@@ -285,19 +298,13 @@ export class ProxyServer extends EventEmitter {
           const responseHeaders = headersToRecord(ctx.serverToProxyResponse?.headers ?? {});
 
           const entry = buildCaptureEntry(stored, status, responseHeaders, responseBody, maxBodySize);
-          if (!this.options.shouldCapture || this.options.shouldCapture(stored.url)) {
+          if (!this.options.shouldCapture || this.options.shouldCapture(stored.url, stored.host)) {
             this.options.captureStore.upsert(entry);
             this.emit('capture', entry);
           }
           cb();
         });
 
-        const rewriteRule = this.options.interceptEngine.findRewrite(info.fullUrl, 'request');
-        if (rewriteRule) {
-          applyRequestRewrite(ctx, rewriteRule);
-        }
-
-        const breakpointRule = this.options.interceptEngine.findBreakpoint(info.fullUrl, 'request');
         if (breakpointRule) {
           this.handleRequestBreakpoint(ctx, callback, pending, id, requestBody, {
             method,
@@ -308,7 +315,6 @@ export class ProxyServer extends EventEmitter {
           return;
         }
 
-        const syncMatch = this.options.autoResponder.findMatch(info.fullUrl);
         if (syncMatch) {
           void this.respondWithRule(ctx, pending, syncMatch, id);
           return;
@@ -316,7 +322,12 @@ export class ProxyServer extends EventEmitter {
 
         this.applyMapRemoteIfNeeded(ctx, pending, info.fullUrl);
 
-        callback();
+        void (async () => {
+          if (pending.throttlePassthrough) {
+            await this.options.throttle?.applyLatency();
+          }
+          callback();
+        })();
       });
 
       proxy.listen(
@@ -389,7 +400,7 @@ export class ProxyServer extends EventEmitter {
           },
           this.options.maxBodySize,
         );
-        if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+        if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
           this.options.captureStore.upsert(breakpointEntry);
           this.emit('capture', breakpointEntry);
         }
@@ -439,8 +450,12 @@ export class ProxyServer extends EventEmitter {
         });
 
         this.applyMapRemoteIfNeeded(ctx, pending, input.url);
+        pending.throttlePassthrough = true;
 
-        callback();
+        void (async () => {
+          await this.options.throttle?.applyLatency();
+          callback();
+        })();
       })().catch((err) => {
         this.pending.delete(captureId);
         this.emit('notify', err instanceof Error ? err.message : 'Breakpoint error');
@@ -496,7 +511,7 @@ export class ProxyServer extends EventEmitter {
             },
             this.options.maxBodySize,
           );
-          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
             this.options.captureStore.upsert(breakpointEntry);
             this.emit('capture', breakpointEntry);
           }
@@ -545,7 +560,7 @@ export class ProxyServer extends EventEmitter {
             responseBody,
             this.options.maxBodySize,
           );
-          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
             this.options.captureStore.upsert(entry);
             this.emit('capture', entry);
           }
@@ -584,6 +599,36 @@ export class ProxyServer extends EventEmitter {
     if (this.sweepTimer) {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
+    }
+  }
+
+  private async pipeThrottledUpload(
+    pending: PendingCapture,
+    chunk: Buffer,
+    cb: ThrottleCallback,
+  ): Promise<void> {
+    try {
+      if (pending.throttlePassthrough) {
+        await this.options.throttle?.throttleUpload(chunk);
+      }
+      cb(null, chunk);
+    } catch (err) {
+      cb(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  private async pipeThrottledDownload(
+    pending: PendingCapture,
+    chunk: Buffer,
+    cb: ThrottleCallback,
+  ): Promise<void> {
+    try {
+      if (pending.throttlePassthrough) {
+        await this.options.throttle?.throttleDownload(chunk);
+      }
+      cb(null, chunk);
+    } catch (err) {
+      cb(err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -626,7 +671,7 @@ export class ProxyServer extends EventEmitter {
         responseBody,
         this.options.maxBodySize,
       );
-      if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+      if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
         this.options.captureStore.upsert(entry);
         this.emit('capture', entry);
       }
@@ -642,7 +687,7 @@ export class ProxyServer extends EventEmitter {
 
     const message = isExpectedUpstreamError(err) ? formatUpstreamError(err) : err instanceof Error ? err.message : 'Upstream request failed';
     const entry = buildFailedCaptureEntry(pending, 504, message, this.options.maxBodySize);
-    if (!this.options.shouldCapture || this.options.shouldCapture(pending.url)) {
+    if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
       this.options.captureStore.upsert(entry);
       this.emit('capture', entry);
     }
@@ -666,7 +711,7 @@ export class ProxyServer extends EventEmitter {
   }
 
   updateOptions(
-    partial: Partial<Pick<ProxyServerOptions, 'port' | 'maxBodySize' | 'shouldCapture'>>,
+    partial: Partial<Pick<ProxyServerOptions, 'port' | 'maxBodySize' | 'shouldCapture' | 'throttle'>>,
   ): void {
     this.options = { ...this.options, ...partial };
   }
