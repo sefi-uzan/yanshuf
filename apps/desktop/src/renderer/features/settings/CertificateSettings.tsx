@@ -8,13 +8,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Separator,
 } from '@yanshuf/ui';
 import { Download, ExternalLink, KeyRound, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { cn } from '@yanshuf/ui/lib/utils';
 import { CA_COMMON_NAME } from '../certificate/cert-flow';
 import { CertStepper } from '../certificate/CertStepper';
 import { useCertStatusPolling } from '../certificate/useCertStatusPolling';
-import { SettingsAlert, SettingsCard, SettingsDangerZone, SettingsSection } from './SettingsLayout';
+import { SettingsAlert, SettingsDangerZone, SettingsSection } from './SettingsLayout';
 import { notifyActionFailed, notifyRemoved, notifyDeleted } from '@/lib/toast-actions';
 
 type ConfirmAction = 'uninstall' | 'reset';
@@ -169,113 +169,97 @@ export function CertificateSettings({
   const trusted = resolvedStatus?.trusted ?? 'unknown';
 
   return (
-    <div className="space-y-6">
-      <SettingsSection title="Trust status" description="Root CA used to decrypt HTTPS traffic locally.">
-        <SettingsCard className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background">
-                {trusted === 'installed' ? (
-                  <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                  <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{CA_COMMON_NAME}</p>
-                <p className="text-xs text-muted-foreground">
-                  {resolvedStatus?.exists ? 'Local CA generated' : 'CA not generated yet'}
-                </p>
-              </div>
-            </div>
-            <Badge variant={trustBadgeVariant(trusted)}>{trustLabel(trusted)}</Badge>
-          </div>
-
-          <CertStepper trusted={trusted} />
-
-          {trusted !== 'installed' ? (
-            <SettingsAlert
-              variant="warning"
-              action={
-                onOpenOnboarding ? (
-                  <Button size="sm" variant="outline" onClick={onOpenOnboarding}>
-                    Open setup guide
-                  </Button>
-                ) : undefined
-              }
+    <div className="space-y-5">
+      <SettingsSection
+        title="Certificate"
+        description="Root CA used to decrypt HTTPS traffic locally."
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div
+              className={cn(
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background',
+                trusted === 'installed'
+                  ? 'border-emerald-500/30'
+                  : 'border-amber-500/30',
+              )}
             >
-              Certificate setup is incomplete. Install and trust <strong>{CA_COMMON_NAME}</strong> to
-              decrypt HTTPS traffic.
-            </SettingsAlert>
-          ) : (
-            <SettingsAlert variant="success">
-              <strong>{CA_COMMON_NAME}</strong> is installed in your login keychain and trusted for
-              SSL.
-            </SettingsAlert>
-          )}
+              {trusted === 'installed' ? (
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">{CA_COMMON_NAME}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {resolvedStatus?.exists ? 'Local CA generated' : 'CA not generated yet'}
+              </p>
+            </div>
+          </div>
 
-          {resolvedStatus ? (
-            <p className="text-xs text-muted-foreground">
-              Login keychain:{' '}
-              {resolvedStatus.trusted === 'installed'
-                ? 'trusted'
-                : resolvedStatus.trusted === 'untrusted'
-                  ? 'installed — set Always Trust in Keychain Access'
-                  : 'not installed'}
-            </p>
-          ) : null}
-        </SettingsCard>
-      </SettingsSection>
-
-      <SettingsSection title="Manage" description="Inspect, export, or open the certificate in Keychain Access.">
-        <SettingsCard className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => void window.yanshuf.cert.openKeychain()} disabled={busy}>
-              <KeyRound className="mr-2 h-4 w-4" />
-              Open Keychain Access
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={trustBadgeVariant(trusted)}>{trustLabel(trusted)}</Badge>
+            {trusted !== 'installed' && onOpenOnboarding && (
+              <Button size="sm" onClick={onOpenOnboarding} disabled={busy}>
+                Set up
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void window.yanshuf.cert.openKeychain()}
+              disabled={busy}
+            >
+              <KeyRound className="mr-1.5 h-4 w-4" />
+              Keychain
             </Button>
-            <Button variant="outline" size="sm" onClick={exportCert} disabled={busy}>
-              <Download className="mr-2 h-4 w-4" />
-              Export certificate…
+            <Button variant="outline" size="sm" onClick={() => void exportCert()} disabled={busy}>
+              <Download className="mr-1.5 h-4 w-4" />
+              Export
             </Button>
           </div>
-          {exportPath ? (
-            <p className="flex items-start gap-2 text-xs text-muted-foreground">
-              <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span className="break-all">Exported to {exportPath}</span>
-            </p>
-          ) : null}
-        </SettingsCard>
+        </div>
+
+        {exportPath ? (
+          <p className="mt-2 flex items-start gap-2 text-xs text-muted-foreground">
+            <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="break-all">Exported to {exportPath}</span>
+          </p>
+        ) : null}
       </SettingsSection>
+
+      <CertStepper trusted={trusted} variant="inline" />
+
+      {trusted !== 'installed' && (
+        <SettingsAlert variant="warning">
+          {trusted === 'untrusted'
+            ? 'Certificate is installed but not fully trusted. Open Keychain Access and set Always Trust for SSL.'
+            : 'Install and trust the root CA to decrypt HTTPS traffic.'}
+        </SettingsAlert>
+      )}
 
       <SettingsDangerZone>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setConfirmAction('uninstall')}
+        <div className="divide-y divide-destructive/10">
+          <DangerActionRow
+            title="Remove from Keychain"
+            description="Deletes the root CA from your login keychain. HTTPS decryption stops until you reinstall."
+            actionLabel="Remove"
             disabled={busy}
-          >
-            Remove from Keychain
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setConfirmAction('reset')}
+            onAction={() => setConfirmAction('uninstall')}
+          />
+          <DangerActionRow
+            title="Reset CA"
+            description="Stops capture, deletes local CA files, and generates a new root certificate."
+            actionLabel="Reset"
             disabled={busy}
-          >
-            Reset CA
-          </Button>
+            onAction={() => setConfirmAction('reset')}
+          />
         </div>
       </SettingsDangerZone>
 
       {actionError ? (
-        <>
-          <Separator />
-          <p className="text-sm text-destructive">{actionError}</p>
-        </>
+        <p className="text-sm text-destructive">{actionError}</p>
       ) : null}
 
       <Dialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
@@ -300,6 +284,38 @@ export function CertificateSettings({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function DangerActionRow({
+  title,
+  description,
+  actionLabel,
+  disabled,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  disabled: boolean;
+  onAction: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        disabled={disabled}
+        onClick={onAction}
+      >
+        {actionLabel}
+      </Button>
     </div>
   );
 }
