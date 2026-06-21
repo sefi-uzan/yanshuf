@@ -1,5 +1,6 @@
 import type { CaptureEntry, CaptureEntrySummary, InterceptPhase } from '@yanshuf/shared';
 import { bodyPreview, headersToRecord, parseUrlParts } from '@yanshuf/shared';
+import type { SessionThrottle } from './throttle';
 
 export class CaptureStore {
   private entries: CaptureEntry[] = [];
@@ -107,6 +108,7 @@ export interface PendingCapture {
   mappedToUrl?: string;
   fromComposer?: boolean;
   throttlePassthrough?: boolean;
+  sessionThrottle?: SessionThrottle;
 }
 
 export function buildFailedCaptureEntry(
