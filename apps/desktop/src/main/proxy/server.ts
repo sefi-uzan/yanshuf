@@ -21,6 +21,7 @@ import {
   extractRequestInfo,
   type PendingCapture,
 } from './capture-store';
+import type { CaptureEntry } from '@yanshuf/shared';
 import { headersToRecord ,
   isComposerCaptureHeader,
   stripComposerCaptureHeader,
@@ -158,6 +159,7 @@ export class ProxyServer extends EventEmitter {
   private pending = new Map<string, PendingCapture>();
   private running = false;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private hiddenCount = 0;
 
   constructor(options: ProxyServerOptions) {
     super();
@@ -172,8 +174,17 @@ export class ProxyServer extends EventEmitter {
     return this.options.port;
   }
 
+  getHiddenCount(): number {
+    return this.hiddenCount;
+  }
+
+  resetHiddenCount(): void {
+    this.hiddenCount = 0;
+  }
+
   async start(): Promise<void> {
     if (this.running) return;
+    this.hiddenCount = 0;
 
     if (!(await isPortAvailable(this.options.port, this.options.host))) {
       throw new ProxyPortInUseError(this.options.port);
@@ -299,10 +310,7 @@ export class ProxyServer extends EventEmitter {
           const responseHeaders = headersToRecord(ctx.serverToProxyResponse?.headers ?? {});
 
           const entry = buildCaptureEntry(stored, status, responseHeaders, responseBody, maxBodySize);
-          if (!this.options.shouldCapture || this.options.shouldCapture(stored.url, stored.host)) {
-            this.options.captureStore.upsert(entry);
-            this.emit('capture', entry);
-          }
+          this.recordCapture(stored.url, stored.host, entry);
           cb();
         });
 
@@ -404,6 +412,8 @@ export class ProxyServer extends EventEmitter {
         if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
           this.options.captureStore.upsert(breakpointEntry);
           this.emit('capture', breakpointEntry);
+        } else {
+          this.incrementHiddenCount();
         }
 
         const decision = await this.options.breakpointManager.wait(snapshot);
@@ -516,6 +526,8 @@ export class ProxyServer extends EventEmitter {
           if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
             this.options.captureStore.upsert(breakpointEntry);
             this.emit('capture', breakpointEntry);
+          } else {
+            this.incrementHiddenCount();
           }
         }
 
@@ -562,10 +574,7 @@ export class ProxyServer extends EventEmitter {
             responseBody,
             this.options.maxBodySize,
           );
-          if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
-            this.options.captureStore.upsert(entry);
-            this.emit('capture', entry);
-          }
+          this.recordCapture(pending.url, pending.host, entry);
         }
       })().catch((err) => {
         if (captureId) this.pending.delete(captureId);
@@ -678,10 +687,7 @@ export class ProxyServer extends EventEmitter {
         responseBody,
         this.options.maxBodySize,
       );
-      if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
-        this.options.captureStore.upsert(entry);
-        this.emit('capture', entry);
-      }
+      this.recordCapture(pending.url, pending.host, entry);
     } catch (err) {
       this.emit('notify', err instanceof Error ? err.message : 'Mock response failed');
     }
@@ -694,10 +700,21 @@ export class ProxyServer extends EventEmitter {
 
     const message = isExpectedUpstreamError(err) ? formatUpstreamError(err) : err instanceof Error ? err.message : 'Upstream request failed';
     const entry = buildFailedCaptureEntry(pending, 504, message, this.options.maxBodySize);
-    if (!this.options.shouldCapture || this.options.shouldCapture(pending.url, pending.host)) {
+    this.recordCapture(pending.url, pending.host, entry);
+  }
+
+  private recordCapture(url: string, host: string, entry: CaptureEntry): void {
+    if (!this.options.shouldCapture || this.options.shouldCapture(url, host)) {
       this.options.captureStore.upsert(entry);
       this.emit('capture', entry);
+      return;
     }
+    this.incrementHiddenCount();
+  }
+
+  private incrementHiddenCount(): void {
+    this.hiddenCount++;
+    this.emit('hidden');
   }
 
   stop(): Promise<void> {
@@ -712,6 +729,7 @@ export class ProxyServer extends EventEmitter {
       this.proxy = null;
       this.running = false;
       this.pending.clear();
+      this.hiddenCount = 0;
       uninstallProxyConsoleFilter();
       resolve();
     });

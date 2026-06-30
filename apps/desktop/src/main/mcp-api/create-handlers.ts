@@ -37,9 +37,8 @@ import type { CertificateManager } from '../cert/manager';
 import type { ComposerService } from '../composer/service';
 import type { CaptureStore } from '../proxy/capture-store';
 import type { ProxyServer } from '../proxy/server';
-import type { SystemProxyManager } from '../system-proxy/macos';
+import type { CaptureController } from '../capture-controller';
 import type { JsonFileStore } from '../storage/json-store';
-import { assertCertTrusted } from '../cert/cert-gate';
 import type { McpWaitQueue } from './wait-queue';
 
 export interface McpHandlerDeps {
@@ -52,7 +51,7 @@ export interface McpHandlerDeps {
   breakpointManager: BreakpointManager;
   proxyServer: ProxyServer;
   certManager: CertificateManager;
-  systemProxy: SystemProxyManager;
+  captureController: CaptureController;
   composerService: ComposerService;
   store: JsonFileStore;
   waitQueue: McpWaitQueue;
@@ -72,7 +71,7 @@ function buildStatus(
   certTrusted: boolean,
 ): YanshufStatus {
   return {
-    capturing: deps.systemProxy.isEnabled() && deps.proxyServer.isRunning(),
+    capturing: deps.captureController.isCapturing(),
     port: deps.settings.port,
     entryCount: deps.captureStore.count,
     certTrusted,
@@ -94,21 +93,7 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         throw new Error('Certificate is not trusted. Complete certificate setup in Yanshuf settings.');
       }
 
-      const capturing = deps.systemProxy.isEnabled() && deps.proxyServer.isRunning();
-      if (capturing) {
-        await deps.proxyServer.stop();
-        deps.settings.proxyRunning = false;
-        await deps.systemProxy.disable();
-        deps.settings.systemProxyEnabled = false;
-      } else {
-        await deps.systemProxy.enable('127.0.0.1', deps.settings.port, {
-          captureLocalhost: deps.settings.captureLocalhost,
-        });
-        deps.settings.systemProxyEnabled = true;
-        await assertCertTrusted(deps.certManager);
-        await deps.proxyServer.start();
-        deps.settings.proxyRunning = true;
-      }
+      await deps.captureController.toggle();
       await deps.saveSettings();
       return buildStatus(deps, certTrusted);
     },
@@ -197,22 +182,17 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         };
       }
 
-      if (!deps.proxyServer.isRunning()) {
-        await assertCertTrusted(deps.certManager);
-        await deps.proxyServer.start();
-        deps.settings.proxyRunning = true;
-        await deps.saveSettings();
-      }
-
-      const beforeIds = new Set(deps.captureStore.list().map((e) => e.id));
-      const caCertPath = path.join(deps.certManager.getSslCaDir(), 'certs', 'ca.pem');
-      const response = await deps.composerService.send(req, {
-        proxyPort: deps.settings.port,
-        caCertPath,
+      return deps.captureController.withProxyServer(async () => {
+        const beforeIds = new Set(deps.captureStore.list().map((e) => e.id));
+        const caCertPath = path.join(deps.certManager.getSslCaDir(), 'certs', 'ca.pem');
+        const response = await deps.composerService.send(req, {
+          proxyPort: deps.settings.port,
+          caCertPath,
+        });
+        deps.tagComposerCaptures(beforeIds, req);
+        deps.broadcastCaptureUpdate(true);
+        return response;
       });
-      deps.tagComposerCaptures(beforeIds, req);
-      deps.broadcastCaptureUpdate(true);
-      return response;
     },
 
     async listMockRules() {

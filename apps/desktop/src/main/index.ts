@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AutoResponderRule,
   BreakpointSnapshot,
+  CaptureFilterApplyAction,
   ComposedEntry,
   ComposerRequest,
   InterceptModifications,
@@ -14,14 +15,16 @@ import type {
 } from '@yanshuf/shared';
 import {
   DEFAULT_CAPTURE_FILTER,
-  DEFAULT_SETTINGS,
   DEFAULT_THROTTLE,
   IPC_CHANNELS,
   exportCurl,
+  focusHostCaptureFilter,
+  hideHostCaptureFilter,
   mergeThrottleSettings,
-  resolveThrottleSettings,
+  normalizeAppSettings,
   shouldRecordCapture,
 } from '@yanshuf/shared';
+import { CaptureController } from './capture-controller';
 import { AutoResponderEngine } from './auto-responder/engine';
 import { BreakpointManager } from './intercept/breakpoint-manager';
 import { InterceptEngine } from './intercept/engine';
@@ -101,6 +104,7 @@ let proxyServer: ProxyServer;
 let throttleController: ThrottleController;
 let certManager: CertificateManager;
 let systemProxy: SystemProxyManager;
+let captureController: CaptureController;
 let composerService: ComposerService;
 let mcpWaitQueue: McpWaitQueue;
 let mcpApiServer: McpApiServer | null = null;
@@ -163,19 +167,7 @@ async function loadState(): Promise<void> {
   integrationRegistry = createIntegrationRegistry(store);
 
   const stored = await store.read<Partial<AppSettings>>('settings.json', {});
-  settings = {
-    ...DEFAULT_SETTINGS,
-    ...stored,
-    captureFilter: {
-      ...DEFAULT_CAPTURE_FILTER,
-      ...stored.captureFilter,
-    },
-    throttle: {
-      ...DEFAULT_THROTTLE,
-      ...stored.throttle,
-    },
-    captureLocalhost: stored.captureLocalhost ?? DEFAULT_SETTINGS.captureLocalhost,
-  };
+  settings = normalizeAppSettings(stored);
   captureStore = new CaptureStore(settings.ringBufferSize);
   autoResponder = new AutoResponderEngine();
   const rules = await store.read<AutoResponderRule[]>('rules.json', []);
@@ -226,36 +218,24 @@ async function loadState(): Promise<void> {
     if (latest) mcpWaitQueue.notifyCapture(latest);
   });
 
+  proxyServer.on('hidden', () => {
+    broadcastProxyStatus();
+  });
+
   proxyServer.on('notify', (message: string) => {
     notifyRenderer({ title: 'Proxy error', description: message, variant: 'error' });
   });
 
-  if (settings.systemProxyEnabled) {
-    try {
-      await assertCertTrusted(certManager);
-      await systemProxy.enable('127.0.0.1', settings.port, {
-        captureLocalhost: settings.captureLocalhost,
-      });
-    } catch {
-      settings.systemProxyEnabled = false;
-      await saveSettings();
-    }
-  }
+  captureController = new CaptureController({
+    settings,
+    saveSettings,
+    systemProxy,
+    proxyServer,
+    certManager,
+    captureStore,
+  });
 
-  if (settings.proxyRunning) {
-    if (!systemProxy.isEnabled()) {
-      settings.proxyRunning = false;
-      await saveSettings();
-    } else {
-      try {
-        await assertCertTrusted(certManager);
-        await proxyServer.start();
-      } catch {
-        settings.proxyRunning = false;
-        await saveSettings();
-      }
-    }
-  }
+  await captureController.restoreOnLaunch();
 }
 
 async function saveSettings(): Promise<void> {
@@ -263,13 +243,7 @@ async function saveSettings(): Promise<void> {
 }
 
 function getProxyStatus() {
-  return {
-    running: proxyServer.isRunning(),
-    port: settings.port,
-    entryCount: captureStore.count,
-    systemProxyEnabled: systemProxy.isEnabled(),
-    throttle: resolveThrottleSettings(settings.throttle),
-  };
+  return captureController.getStatus();
 }
 
 // Coalesce high-frequency capture events into at most one IPC send per window.
@@ -281,6 +255,61 @@ function flushCaptureUpdate(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_UPDATED, captureStore.list());
   }
+}
+
+const PROXY_STATUS_BROADCAST_INTERVAL_MS = 120;
+let proxyStatusBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushProxyStatus(): void {
+  proxyStatusBroadcastTimer = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PROXY_STATUS_UPDATED, getProxyStatus());
+  }
+}
+
+function broadcastProxyStatus(immediate = false): void {
+  if (immediate) {
+    if (proxyStatusBroadcastTimer) {
+      clearTimeout(proxyStatusBroadcastTimer);
+      proxyStatusBroadcastTimer = null;
+    }
+    flushProxyStatus();
+    return;
+  }
+  if (proxyStatusBroadcastTimer) return;
+  proxyStatusBroadcastTimer = setTimeout(flushProxyStatus, PROXY_STATUS_BROADCAST_INTERVAL_MS);
+}
+
+function applyCaptureFilterSettings(nextFilter: typeof DEFAULT_CAPTURE_FILTER): void {
+  settings = {
+    ...settings,
+    captureFilter: nextFilter,
+  };
+  proxyServer.updateOptions({ shouldCapture: buildShouldCapture() });
+  proxyServer.resetHiddenCount();
+  captureStore.clear();
+  broadcastCaptureUpdate(true);
+  broadcastProxyStatus(true);
+}
+
+async function applyCaptureFilterAction(action: CaptureFilterApplyAction): Promise<void> {
+  const current = settings.captureFilter ?? DEFAULT_CAPTURE_FILTER;
+  let next = current;
+
+  switch (action.type) {
+    case 'focusHost':
+      next = focusHostCaptureFilter(action.host);
+      break;
+    case 'hideHost':
+      next = hideHostCaptureFilter(current, action.host);
+      break;
+    case 'clear':
+      next = { ...DEFAULT_CAPTURE_FILTER };
+      break;
+  }
+
+  applyCaptureFilterSettings(next);
+  await saveSettings();
 }
 
 function broadcastCaptureUpdate(immediate = false): void {
@@ -374,10 +403,6 @@ function buildMenu(): void {
           accelerator: 'CmdOrCtrl+Shift+P',
           click: () => sendMenuAction('toggle-proxy'),
         },
-        {
-          label: 'Enable System Proxy',
-          click: () => sendMenuAction('toggle-system-proxy'),
-        },
       ],
     },
     {
@@ -432,7 +457,7 @@ async function startMcpApi(userDataPath: string): Promise<void> {
     breakpointManager,
     proxyServer,
     certManager,
-    systemProxy,
+    captureController,
     composerService,
     store,
     waitQueue: mcpWaitQueue,
@@ -449,13 +474,7 @@ async function startMcpApi(userDataPath: string): Promise<void> {
 function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.PROXY_START, async () => {
     try {
-      if (!systemProxy.isEnabled()) {
-        throw new Error('Enable System Proxy before starting capture');
-      }
-      await assertCertTrusted(certManager);
-      await proxyServer.start();
-      settings.proxyRunning = true;
-      await saveSettings();
+      await captureController.setCapturing(true);
       return getProxyStatus();
     } catch (err) {
       rethrowCertIpcError(err);
@@ -463,10 +482,17 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STOP, async () => {
-    await proxyServer.stop();
-    settings.proxyRunning = false;
-    await saveSettings();
+    await captureController.setCapturing(false);
     return getProxyStatus();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PROXY_TOGGLE, async () => {
+    try {
+      await captureController.toggle();
+      return getProxyStatus();
+    } catch (err) {
+      rethrowCertIpcError(err);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STATUS, () => getProxyStatus());
@@ -483,8 +509,15 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.CAPTURE_CLEAR, () => {
     captureStore.clear();
+    proxyServer.resetHiddenCount();
     broadcastCaptureUpdate(true);
+    broadcastProxyStatus(true);
     return [];
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURE_FILTER_APPLY, async (_e, action: CaptureFilterApplyAction) => {
+    await applyCaptureFilterAction(action);
+    return getProxyStatus();
   });
 
   ipcMain.handle(IPC_CHANNELS.CERT_STATUS, () => certManager.getStatus());
@@ -500,41 +533,8 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.CERT_UNINSTALL, () => certManager.uninstallFromKeychain());
 
   ipcMain.handle(IPC_CHANNELS.CERT_RESET, async () => {
-    if (proxyServer.isRunning()) {
-      await proxyServer.stop();
-      settings.proxyRunning = false;
-    }
-    if (systemProxy.isEnabled()) {
-      await systemProxy.disable();
-      settings.systemProxyEnabled = false;
-    }
-    await saveSettings();
+    await captureController.setCapturing(false);
     return certManager.resetCa();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_ENABLE, async () => {
-    try {
-      await assertCertTrusted(certManager);
-      await systemProxy.enable('127.0.0.1', settings.port, {
-        captureLocalhost: settings.captureLocalhost,
-      });
-      settings.systemProxyEnabled = true;
-      await saveSettings();
-      return getProxyStatus();
-    } catch (err) {
-      rethrowCertIpcError(err);
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_PROXY_DISABLE, async () => {
-    await systemProxy.disable();
-    settings.systemProxyEnabled = false;
-    if (proxyServer.isRunning()) {
-      await proxyServer.stop();
-      settings.proxyRunning = false;
-    }
-    await saveSettings();
-    return getProxyStatus();
   });
 
   ipcMain.handle(IPC_CHANNELS.RULES_GET, () => autoResponder.getRules());
@@ -574,18 +574,14 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.COMPOSER_SEND, async (_e, req: ComposerRequest) => {
     try {
-      if (!proxyServer.isRunning()) {
-        await assertCertTrusted(certManager);
-        await proxyServer.start();
-        settings.proxyRunning = true;
-        await saveSettings();
-      }
-      const beforeIds = new Set(captureStore.list().map((entry) => entry.id));
-      const caCertPath = path.join(certManager.getSslCaDir(), 'certs', 'ca.pem');
-      const response = await composerService.send(req, { proxyPort: settings.port, caCertPath });
-      tagComposerCaptures(beforeIds, req);
-      broadcastCaptureUpdate(true);
-      return response;
+      return await captureController.withProxyServer(async () => {
+        const beforeIds = new Set(captureStore.list().map((entry) => entry.id));
+        const caCertPath = path.join(certManager.getSslCaDir(), 'certs', 'ca.pem');
+        const response = await composerService.send(req, { proxyPort: settings.port, caCertPath });
+        tagComposerCaptures(beforeIds, req);
+        broadcastCaptureUpdate(true);
+        return response;
+      });
     } catch (err) {
       rethrowCertIpcError(err);
     }
@@ -621,6 +617,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
     const prevPort = settings.port;
     const prevCaptureLocalhost = settings.captureLocalhost;
+    const prevFilter = settings.captureFilter ?? DEFAULT_CAPTURE_FILTER;
     settings = {
       ...next,
       captureFilter: {
@@ -641,29 +638,22 @@ function registerIpc(): void {
       shouldCapture: buildShouldCapture(),
     });
 
-    if (settings.captureLocalhost !== prevCaptureLocalhost && systemProxy.isEnabled()) {
-      await systemProxy.updateCaptureLocalhost(
-        settings.captureLocalhost,
-        '127.0.0.1',
-        settings.port,
-      );
+    const filtersChanged =
+      prevFilter.mode !== settings.captureFilter.mode ||
+      prevFilter.urls !== settings.captureFilter.urls;
+    if (filtersChanged) {
+      proxyServer.resetHiddenCount();
+      captureStore.clear();
+      broadcastCaptureUpdate(true);
+    }
+    broadcastProxyStatus(true);
+
+    if (settings.captureLocalhost !== prevCaptureLocalhost) {
+      await captureController.updateCaptureLocalhost();
     }
 
     if (settings.port !== prevPort) {
-      if (systemProxy.isEnabled()) {
-        await systemProxy.updatePort('127.0.0.1', settings.port, {
-          captureLocalhost: settings.captureLocalhost,
-        });
-      }
-      if (proxyServer.isRunning()) {
-        await proxyServer.stop();
-        try {
-          await proxyServer.start();
-          settings.proxyRunning = true;
-        } catch {
-          settings.proxyRunning = false;
-        }
-      }
+      await captureController.applyPortChange();
     }
 
     await saveSettings();
@@ -859,16 +849,9 @@ async function shutdownForQuit(): Promise<void> {
   }
   mcpWaitQueue?.clear();
   try {
-    await systemProxy?.disable();
+    await captureController?.shutdown();
   } catch {
     // Never block quit on proxy teardown.
-  }
-  try {
-    if (proxyServer?.isRunning()) {
-      await proxyServer.stop();
-    }
-  } catch {
-    // ignore
   }
 }
 

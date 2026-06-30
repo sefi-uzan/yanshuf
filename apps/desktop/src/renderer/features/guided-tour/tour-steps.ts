@@ -9,7 +9,7 @@ export interface TourStep {
 export const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="status-bar-toggles"]',
-    content: 'Turn these on to start capturing requests.',
+    content: 'Turn this on to start capturing requests.',
     placement: 'top',
   },
   {

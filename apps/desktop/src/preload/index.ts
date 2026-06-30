@@ -4,6 +4,7 @@ import type {
   AutoResponderRule,
   CaptureEntry,
   CaptureEntrySummary,
+  CaptureFilterApplyAction,
   CertStatus,
   BreakpointSnapshot,
   ComposedEntry,
@@ -32,14 +33,19 @@ export interface YanshufAPI {
   proxy: {
     start: () => Promise<ProxyStatus>;
     stop: () => Promise<ProxyStatus>;
+    toggle: () => Promise<ProxyStatus>;
     status: () => Promise<ProxyStatus>;
     setThrottle: (patch: ThrottleSetPatch | null) => Promise<ProxyStatus>;
+    onStatusUpdated: (callback: (status: ProxyStatus) => void) => () => void;
   };
   capture: {
     list: () => Promise<CaptureEntrySummary[]>;
     get: (id: string) => Promise<CaptureEntry | undefined>;
     clear: () => Promise<CaptureEntrySummary[]>;
     onUpdated: (callback: (entries: CaptureEntrySummary[]) => void) => () => void;
+  };
+  captureFilter: {
+    apply: (action: CaptureFilterApplyAction) => Promise<ProxyStatus>;
   };
   cert: {
     status: () => Promise<CertStatus>;
@@ -49,10 +55,6 @@ export interface YanshufAPI {
     verify: () => Promise<{ trusted: boolean; error?: string }>;
     uninstall: () => Promise<void>;
     reset: () => Promise<CertStatus>;
-  };
-  systemProxy: {
-    enable: () => Promise<ProxyStatus>;
-    disable: () => Promise<ProxyStatus>;
   };
   rules: {
     get: () => Promise<AutoResponderRule[]>;
@@ -130,8 +132,14 @@ const api: YanshufAPI = {
   proxy: {
     start: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_START),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STOP),
+    toggle: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_TOGGLE),
     status: () => ipcRenderer.invoke(IPC_CHANNELS.PROXY_STATUS),
     setThrottle: (patch) => ipcRenderer.invoke(IPC_CHANNELS.PROXY_THROTTLE_SET, patch),
+    onStatusUpdated: (callback) => {
+      const handler = (_: Electron.IpcRendererEvent, status: ProxyStatus) => callback(status);
+      ipcRenderer.on(IPC_CHANNELS.PROXY_STATUS_UPDATED, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.PROXY_STATUS_UPDATED, handler);
+    },
   },
   capture: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_LIST),
@@ -143,6 +151,9 @@ const api: YanshufAPI = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_UPDATED, handler);
     },
   },
+  captureFilter: {
+    apply: (action) => ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_FILTER_APPLY, action),
+  },
   cert: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_STATUS),
     verify: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_VERIFY),
@@ -151,10 +162,6 @@ const api: YanshufAPI = {
     openKeychain: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_OPEN_KEYCHAIN),
     uninstall: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_UNINSTALL),
     reset: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_RESET),
-  },
-  systemProxy: {
-    enable: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_PROXY_ENABLE),
-    disable: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_PROXY_DISABLE),
   },
   rules: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.RULES_GET),

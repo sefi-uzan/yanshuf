@@ -83,6 +83,10 @@ function parseProxySetting(stdout: string): ProxySnapshot {
   return { enabled, server, port };
 }
 
+function proxyPointsAt(snapshot: ProxySnapshot, host: string, port: number): boolean {
+  return snapshot.enabled && snapshot.server === host && snapshot.port === String(port);
+}
+
 function parseBypassDomains(stdout: string): string[] {
   return stdout
     .split('\n')
@@ -182,6 +186,45 @@ export class SystemProxyManager {
   async disable(): Promise<void> {
     if (process.platform !== 'darwin' || !this.state.enabled) return;
 
+    await this.releaseAllServices();
+    this.snapshots.clear();
+    this.state = { enabled: false };
+  }
+
+  /**
+   * Crash-recovery cleanup: disable OS proxy only when it still points at this app.
+   * Avoids touching unrelated corporate or manual proxy settings on launch.
+   */
+  async releaseIfPointingAt(host: string, port: number): Promise<void> {
+    if (process.platform !== 'darwin') return;
+
+    if (this.state.enabled) {
+      await this.disable();
+      return;
+    }
+
+    const services = await getNetworkServicesForProxy();
+    for (const service of services) {
+      try {
+        const [webOut, secureOut] = await Promise.all([
+          execFileAsync('networksetup', ['-getwebproxy', service]),
+          execFileAsync('networksetup', ['-getsecurewebproxy', service]),
+        ]);
+        const web = parseProxySetting(webOut.stdout);
+        const secure = parseProxySetting(secureOut.stdout);
+        if (proxyPointsAt(web, host, port)) {
+          await execFileAsync('networksetup', ['-setwebproxystate', service, 'off']);
+        }
+        if (proxyPointsAt(secure, host, port)) {
+          await execFileAsync('networksetup', ['-setsecurewebproxystate', service, 'off']);
+        }
+      } catch {
+        // Best effort: keep checking the remaining services.
+      }
+    }
+  }
+
+  private async releaseAllServices(): Promise<void> {
     const services =
       this.snapshots.size > 0 ? [...this.snapshots.keys()] : await getNetworkServicesForProxy();
 
@@ -198,9 +241,6 @@ export class SystemProxyManager {
         // Best effort: keep restoring the remaining services.
       }
     }
-
-    this.snapshots.clear();
-    this.state = { enabled: false };
   }
 
   isEnabled(): boolean {
@@ -236,4 +276,4 @@ export class SystemProxyManager {
   }
 }
 
-export { parseBypassDomains, readBypassDomains, setBypassDomains };
+export { parseBypassDomains, parseProxySetting, proxyPointsAt, readBypassDomains, setBypassDomains };

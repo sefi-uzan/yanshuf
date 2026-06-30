@@ -1,5 +1,11 @@
 import type { CaptureFilterSettings } from './types';
-import { isLocalhostHost, isSelfTraffic, parseHostPort, type SelfTrafficOptions } from './localhost';
+import {
+  isLocalhostHost,
+  isSelfTraffic,
+  normalizeHost,
+  parseHostPort,
+  type SelfTrafficOptions,
+} from './localhost';
 
 export interface ShouldRecordCaptureOptions extends SelfTrafficOptions {
   captureLocalhost: boolean;
@@ -44,3 +50,53 @@ export function shouldRecordCapture(
   if (!opts.captureLocalhost && isLocalhostHost(host)) return false;
   return shouldCaptureUrl(url, filter);
 }
+
+export function isCaptureFilterActive(filter: CaptureFilterSettings): boolean {
+  return parseFilterPatterns(filter.urls).length > 0;
+}
+
+/** Strip port from a host header or host:port string for use in URL glob patterns. */
+export function hostWithoutPort(host: string): string {
+  const trimmed = host.trim();
+  const colonIdx = trimmed.lastIndexOf(':');
+  if (colonIdx > 0 && /^\d+$/.test(trimmed.slice(colonIdx + 1))) {
+    return normalizeHost(trimmed.slice(0, colonIdx));
+  }
+  return normalizeHost(trimmed);
+}
+
+/** Build a URL glob that matches requests for this host. */
+export function hostToFilterPattern(host: string): string {
+  return `*${hostWithoutPort(host)}*`;
+}
+
+export function mergeFilterPatterns(existing: string, additions: string[]): string {
+  const merged = [...parseFilterPatterns(existing)];
+  for (const pattern of additions) {
+    if (!merged.includes(pattern)) merged.push(pattern);
+  }
+  return merged.join(';');
+}
+
+export function focusHostCaptureFilter(host: string): CaptureFilterSettings {
+  return {
+    mode: 'include',
+    urls: hostToFilterPattern(host),
+  };
+}
+
+export function hideHostCaptureFilter(
+  current: CaptureFilterSettings,
+  host: string,
+): CaptureFilterSettings {
+  const pattern = hostToFilterPattern(host);
+  return {
+    mode: 'exclude',
+    urls: mergeFilterPatterns(current.mode === 'exclude' ? current.urls : '', [pattern]),
+  };
+}
+
+export type CaptureFilterApplyAction =
+  | { type: 'focusHost'; host: string }
+  | { type: 'hideHost'; host: string }
+  | { type: 'clear' };
