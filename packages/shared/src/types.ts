@@ -169,8 +169,7 @@ export interface AppSettings {
   port: number;
   ringBufferSize: number;
   maxBodySize: number;
-  systemProxyEnabled: boolean;
-  proxyRunning: boolean;
+  capturing: boolean;
   guidedTourCompleted?: boolean;
   captureFilter: CaptureFilterSettings;
   captureLocalhost: boolean;
@@ -186,12 +185,21 @@ export interface CertStatus {
   keychainLocation?: 'none' | 'login';
 }
 
+export interface CaptureFilterStatus {
+  /** True when URL glob patterns are configured. */
+  active: boolean;
+  mode: CaptureFilterMode;
+  patternCount: number;
+  /** Requests proxied but not shown since the last clear or filter change. */
+  hiddenCount: number;
+}
+
 export interface ProxyStatus {
   running: boolean;
   port: number;
   entryCount: number;
-  systemProxyEnabled: boolean;
   throttle: ThrottleSettings;
+  captureFilter: CaptureFilterStatus;
 }
 
 export interface SystemProxyState {
@@ -215,8 +223,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   port: 8888,
   ringBufferSize: 10000,
   maxBodySize: 5 * 1024 * 1024,
-  systemProxyEnabled: false,
-  proxyRunning: false,
+  capturing: false,
   guidedTourCompleted: false,
   captureFilter: DEFAULT_CAPTURE_FILTER,
   captureLocalhost: false,
@@ -233,6 +240,8 @@ export const IPC_CHANNELS = {
   CAPTURE_GET: 'capture:get',
   CAPTURE_CLEAR: 'capture:clear',
   CAPTURE_UPDATED: 'capture:updated',
+  CAPTURE_FILTER_APPLY: 'capture-filter:apply',
+  PROXY_STATUS_UPDATED: 'proxy:status-updated',
   CERT_STATUS: 'cert:status',
   CERT_EXPORT: 'cert:export',
   CERT_INSTALL: 'cert:install',
@@ -240,8 +249,6 @@ export const IPC_CHANNELS = {
   CERT_VERIFY: 'cert:verify',
   CERT_UNINSTALL: 'cert:uninstall',
   CERT_RESET: 'cert:reset',
-  SYSTEM_PROXY_ENABLE: 'system-proxy:enable',
-  SYSTEM_PROXY_DISABLE: 'system-proxy:disable',
   RULES_GET: 'rules:get',
   RULES_SAVE: 'rules:save',
   INTERCEPT_GET: 'intercept:get',
@@ -283,7 +290,6 @@ export type AppNotifyPayload = {
 
 export type MenuAction =
   | 'toggle-proxy'
-  | 'toggle-system-proxy'
   | 'clear-session'
   | 'focus-search'
   | 'open-composer'

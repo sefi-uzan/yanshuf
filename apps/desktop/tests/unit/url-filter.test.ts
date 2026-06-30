@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  focusHostCaptureFilter,
+  hideHostCaptureFilter,
+  hostToFilterPattern,
+  hostWithoutPort,
+  isCaptureFilterActive,
+  mergeFilterPatterns,
   parseFilterPatterns,
   shouldCaptureUrl,
   shouldRecordCapture,
@@ -62,5 +68,38 @@ describe('url-filter', () => {
     expect(
       shouldRecordCapture('http://127.0.0.1:3000/', '127.0.0.1:3000', filter, opts),
     ).toBe(true);
+  });
+
+  it('detects active capture filters', () => {
+    expect(isCaptureFilterActive({ mode: 'exclude', urls: '' })).toBe(false);
+    expect(isCaptureFilterActive({ mode: 'include', urls: '*.example.com' })).toBe(true);
+  });
+
+  it('builds host patterns without port', () => {
+    expect(hostWithoutPort('api.example.com:443')).toBe('api.example.com');
+    expect(hostToFilterPattern('cdn.example.com:443')).toBe('*cdn.example.com*');
+  });
+
+  it('focuses and hides hosts via filter settings', () => {
+    expect(focusHostCaptureFilter('api.example.com')).toEqual({
+      mode: 'include',
+      urls: '*api.example.com*',
+    });
+
+    expect(hideHostCaptureFilter({ mode: 'exclude', urls: '*.google.com' }, 'cdn.example.com')).toEqual({
+      mode: 'exclude',
+      urls: '*.google.com;*cdn.example.com*',
+    });
+
+    expect(hideHostCaptureFilter({ mode: 'include', urls: '*.api.com' }, 'cdn.example.com')).toEqual({
+      mode: 'exclude',
+      urls: '*cdn.example.com*',
+    });
+  });
+
+  it('merges filter patterns without duplicates', () => {
+    expect(mergeFilterPatterns('*.google.com', ['*.google.com', '*cdn.example.com*'])).toBe(
+      '*.google.com;*cdn.example.com*',
+    );
   });
 });

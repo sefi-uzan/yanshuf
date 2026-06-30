@@ -65,7 +65,11 @@ function minimalDeps(): McpHandlerDeps {
     breakpointManager: { continue: () => false, abort: () => false } as unknown as McpHandlerDeps['breakpointManager'],
     proxyServer: { isRunning: () => false, start: async () => {}, stop: async () => {} } as unknown as McpHandlerDeps['proxyServer'],
     certManager: { verifyTrust: async () => ({ trusted: true }) } as unknown as McpHandlerDeps['certManager'],
-    systemProxy: { isEnabled: () => false, enable: async () => {}, disable: async () => {} } as unknown as McpHandlerDeps['systemProxy'],
+    captureController: {
+      isCapturing: () => false,
+      toggle: async () => {},
+      withProxyServer: async (fn: () => Promise<unknown>) => fn(),
+    } as unknown as McpHandlerDeps['captureController'],
     composerService: {} as McpHandlerDeps['composerService'],
     store: { write: async (key: string, value: unknown) => { writes[key] = value; } } as unknown as McpHandlerDeps['store'],
     waitQueue: { waitForCapture: async () => null, waitForBreakpoint: async () => null } as unknown as McpHandlerDeps['waitQueue'],

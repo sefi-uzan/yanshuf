@@ -27,7 +27,7 @@ To support native HTTP/2 MITM:
 
 ## Manual spike
 
-1. Start Yanshuf and enable system proxy.
+1. Start Yanshuf and turn on Capture.
 2. Visit `https://google.com` in Chrome.
 3. Confirm entries appear in the session list with decrypted URLs.
 4. Inspect `protocol` in capture metadata — expect `http1` for most sites with the current library.

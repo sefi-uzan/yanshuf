@@ -62,6 +62,12 @@ export default function App() {
     setSettingsOpen(true);
   }, []);
 
+  const openFilterSettings = useCallback(() => {
+    setSettingsTab('general');
+    setFocusAiUpdates(false);
+    setSettingsOpen(true);
+  }, []);
+
   const toggleSettings = useCallback(() => {
     setSettingsOpen((open) => {
       if (!open) {
@@ -103,7 +109,7 @@ export default function App() {
 
   const handleCertOnboardingComplete = useCallback(async () => {
     try {
-      await window.yanshuf.systemProxy.enable();
+      await window.yanshuf.proxy.start();
     } catch {
       // Tour still runs; status bar reflects failure on next refresh.
     }
@@ -142,27 +148,10 @@ export default function App() {
   const handleMenuAction = useCallback(async (action: string) => {
     switch (action) {
       case 'toggle-proxy': {
-        const status = await window.yanshuf.proxy.status();
-        if (status.running) {
-          await window.yanshuf.proxy.stop();
-        } else if (!status.systemProxyEnabled) {
-          notifyActionFailed('start capture', new Error('Enable System Proxy first'));
-        } else {
-          try {
-            await withCertGate(() => window.yanshuf.proxy.start(), openCertOnboarding);
-          } catch (err) {
-            notifyActionFailed('start capture', err);
-          }
-        }
-        setProxyStatusNonce((n) => n + 1);
-        break;
-      }
-      case 'toggle-system-proxy': {
-        const status = await window.yanshuf.proxy.status();
-        if (status.systemProxyEnabled) {
-          await window.yanshuf.systemProxy.disable();
-        } else {
-          await withCertGate(() => window.yanshuf.systemProxy.enable(), openCertOnboarding);
+        try {
+          await withCertGate(() => window.yanshuf.proxy.toggle(), openCertOnboarding);
+        } catch (err) {
+          notifyActionFailed('toggle capture', err);
         }
         setProxyStatusNonce((n) => n + 1);
         break;
@@ -269,6 +258,7 @@ export default function App() {
           onOpenAiSettings={() =>
             openAiSettings(integrationStatus === 'update_available')
           }
+          onOpenFilterSettings={openFilterSettings}
           proxyStatusNonce={proxyStatusNonce}
         />
       </main>

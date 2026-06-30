@@ -1,12 +1,12 @@
 import { useEffect, useId, useState } from 'react';
 import type { CaptureEntry, CaptureEntrySummary, CertStatus, IntegrationAggregateStatus, ProxyStatus, ShortcutKey } from '@yanshuf/shared';
-import { SHORTCUTS } from '@yanshuf/shared';
+import { SHORTCUTS, hostWithoutPort } from '@yanshuf/shared';
 import { Button, Switch } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Shield, Bot } from 'lucide-react';
+import { Shield, Bot, Eye, EyeOff } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import type { DetailMode } from './detailMode';
@@ -15,7 +15,7 @@ import { AutoResponderWorkspace } from '@/features/auto-responder/AutoResponderW
 import { BreakpointPanel } from '@/features/intercept/BreakpointPanel';
 import { useBreakpointNavigation } from '@/features/intercept/useBreakpointNavigation';
 import { withCertGate } from '@/lib/cert-gate';
-import { clearCapturedRequests, notifyActionFailed } from '@/lib/toast-actions';
+import { clearCapturedRequests, notifyActionFailed, notifyApplied } from '@/lib/toast-actions';
 
 interface CaptureViewProps {
   searchQuery: string;
@@ -33,6 +33,7 @@ interface CaptureViewProps {
   onOpenCertificateSettings?: () => void;
   integrationStatus?: IntegrationAggregateStatus;
   onOpenAiSettings?: () => void;
+  onOpenFilterSettings?: () => void;
   proxyStatusNonce?: number;
 }
 
@@ -52,6 +53,7 @@ export function CaptureView({
   onOpenCertificateSettings,
   integrationStatus = 'not_installed',
   onOpenAiSettings,
+  onOpenFilterSettings,
   proxyStatusNonce = 0,
 }: CaptureViewProps) {
   const [entries, setEntries] = useState<CaptureEntrySummary[]>([]);
@@ -62,11 +64,15 @@ export function CaptureView({
   useEffect(() => {
     void window.yanshuf.capture.list().then(setEntries);
     void window.yanshuf.proxy.status().then(setStatus);
-    // Proxy on/off state doesn't change per request, so we don't re-poll status here.
-    return window.yanshuf.capture.onUpdated((next) => {
+    const offCapture = window.yanshuf.capture.onUpdated((next) => {
       setEntries(next);
       if (next.length === 0) setSelectedId(null);
     });
+    const offStatus = window.yanshuf.proxy.onStatusUpdated(setStatus);
+    return () => {
+      offCapture();
+      offStatus();
+    };
   }, []);
 
   useEffect(() => {
@@ -93,41 +99,15 @@ export function CaptureView({
     onNavigateToCapture: onCaptureEntrySelect,
   });
 
-  const toggleProxy = async () => {
+  const toggleCapture = async () => {
     try {
-      if (status?.running) {
-        const next = await window.yanshuf.proxy.stop();
-        setStatus(next);
-        return;
-      }
-      if (!status?.systemProxyEnabled) {
-        notifyActionFailed('start capture', new Error('Enable System Proxy first'));
-        return;
-      }
       const next = await withCertGate(
-        () => window.yanshuf.proxy.start(),
+        () => window.yanshuf.proxy.toggle(),
         () => onOpenCertificateSettings?.(),
       );
       if (next) setStatus(next);
     } catch (err) {
-      notifyActionFailed('start capture', err);
-    }
-  };
-
-  const toggleSystemProxy = async () => {
-    try {
-      if (status?.systemProxyEnabled) {
-        const next = await window.yanshuf.systemProxy.disable();
-        setStatus(next);
-        return;
-      }
-      const next = await withCertGate(
-        () => window.yanshuf.systemProxy.enable(),
-        () => onOpenCertificateSettings?.(),
-      );
-      if (next) setStatus(next);
-    } catch (err) {
-      notifyActionFailed('enable system proxy', err);
+      notifyActionFailed('toggle capture', err);
     }
   };
 
@@ -142,6 +122,21 @@ export function CaptureView({
       setStatus(next);
     } catch (err) {
       notifyActionFailed('toggle throttling', err);
+    }
+  };
+
+  const applyHostFilter = async (type: 'focusHost' | 'hideHost', host: string) => {
+    const label = hostWithoutPort(host);
+    try {
+      const next = await window.yanshuf.captureFilter.apply({ type, host });
+      setStatus(next);
+      if (type === 'focusHost') {
+        notifyApplied('Host focus', `Showing only ${label}`);
+      } else {
+        notifyApplied('Host hidden', `${label} removed from the list`);
+      }
+    } catch (err) {
+      notifyActionFailed(type === 'focusHost' ? 'focus on host' : 'hide host', err);
     }
   };
 
@@ -176,6 +171,8 @@ export function CaptureView({
             onAddToComposer={onAddToComposer}
             onCreateRule={onCreateRule}
             onCreateMapRemoteRule={onCreateMapRemoteRule}
+            onFocusHost={(host) => void applyHostFilter('focusHost', host)}
+            onHideHost={(host) => void applyHostFilter('hideHost', host)}
           />
         </Panel>
         <Separator className="w-1 bg-border transition-colors hover:bg-primary/30" />
@@ -214,13 +211,13 @@ export function CaptureView({
         entryCount={entries.length}
         certStatus={certStatus}
         integrationStatus={integrationStatus}
-        onToggleProxy={toggleProxy}
-        onToggleSystemProxy={toggleSystemProxy}
+        onToggleCapture={toggleCapture}
         onToggleThrottle={toggleThrottle}
         throttleLabel={throttleLabel}
         onClear={clearSession}
         onOpenCertificateSettings={onOpenCertificateSettings}
         onOpenAiSettings={onOpenAiSettings}
+        onOpenFilterSettings={onOpenFilterSettings}
       />
     </div>
   );
@@ -231,25 +228,25 @@ function StatusBar({
   entryCount,
   certStatus,
   integrationStatus,
-  onToggleProxy,
-  onToggleSystemProxy,
+  onToggleCapture,
   onToggleThrottle,
   throttleLabel,
   onClear,
   onOpenCertificateSettings,
   onOpenAiSettings,
+  onOpenFilterSettings,
 }: {
   status: ProxyStatus | null;
   entryCount: number;
   certStatus?: CertStatus | null;
   integrationStatus: IntegrationAggregateStatus;
-  onToggleProxy: () => void;
-  onToggleSystemProxy: () => void;
+  onToggleCapture: () => void;
   onToggleThrottle: () => void;
   throttleLabel: string;
   onClear: () => void;
   onOpenCertificateSettings?: () => void;
   onOpenAiSettings?: () => void;
+  onOpenFilterSettings?: () => void;
 }) {
   const certLabel =
     certStatus?.trusted === 'installed'
@@ -264,25 +261,34 @@ function StatusBar({
         ? 'Certificate needs Always Trust'
         : 'Install root certificate';
 
+  const filter = status?.captureFilter;
+  const filterVisible =
+    filter && (filter.active || ((status?.running ?? false) && filter.hiddenCount > 0));
+  const FilterIcon = filter?.mode === 'include' ? Eye : EyeOff;
+  const filterLabel =
+    filter && filter.hiddenCount > 0
+      ? `${filter.hiddenCount} hidden`
+      : filter?.active
+        ? filter.mode === 'include'
+          ? 'Show only'
+          : 'Hidden'
+        : '';
+  const filterTitle = filter
+    ? filter.active
+      ? filter.mode === 'include'
+        ? `Showing only ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
+        : `Hiding ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
+      : `${filter.hiddenCount} proxied request(s) hidden from the list (localhost, self-traffic, etc.) but still forwarded.`
+    : 'Capture filters';
+
   return (
     <div className="flex items-center gap-3 border-t bg-muted/30 px-3 py-1.5 text-xs">
       <div data-tour="status-bar-toggles" className="flex items-center gap-2">
         <StatusToggle
           label="Capture"
           active={status?.running ?? false}
-          onToggle={onToggleProxy}
+          onToggle={onToggleCapture}
           shortcutKeys={SHORTCUTS.toggleCapture.keys}
-          disabled={!status?.running && !status?.systemProxyEnabled}
-          title={
-            !status?.systemProxyEnabled && !status?.running
-              ? 'Enable System Proxy first'
-              : undefined
-          }
-        />
-        <StatusToggle
-          label="System Proxy"
-          active={status?.systemProxyEnabled ?? false}
-          onToggle={onToggleSystemProxy}
         />
         <StatusToggle
           label={throttleLabel}
@@ -314,6 +320,27 @@ function StatusBar({
         />
         {certLabel}
       </button>
+      {filterVisible ? (
+        <button
+          type="button"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
+            filter?.active
+              ? 'border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+              : 'border-border bg-background/60 text-muted-foreground',
+          )}
+          onClick={() => onOpenFilterSettings?.()}
+          title={filterTitle}
+        >
+          <FilterIcon
+            className={cn(
+              'h-3.5 w-3.5',
+              filter?.active && 'text-violet-600 dark:text-violet-400',
+            )}
+          />
+          {filterLabel}
+        </button>
+      ) : null}
       <button
         type="button"
         className={cn(

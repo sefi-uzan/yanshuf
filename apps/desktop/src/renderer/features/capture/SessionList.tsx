@@ -14,7 +14,8 @@ import { Badge ,
 import { cn } from '@yanshuf/ui/lib/utils';
 import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
 import { captureToComposerRequest , formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
-import { Copy, Ellipsis, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
+import { Copy, Ellipsis, Eye, EyeOff, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
+import { hostWithoutPort } from '@yanshuf/shared';
 
 interface SessionListProps {
   entries: CaptureEntrySummary[];
@@ -25,6 +26,8 @@ interface SessionListProps {
   onAddToComposer?: (id: string) => void;
   onCreateRule?: (id: string) => void;
   onCreateMapRemoteRule?: (id: string) => void;
+  onFocusHost?: (host: string) => void;
+  onHideHost?: (host: string) => void;
 }
 
 function statusVariant(status: number): 'success' | 'warning' | 'error' | 'secondary' {
@@ -57,6 +60,8 @@ export function SessionList({
   onAddToComposer,
   onCreateRule,
   onCreateMapRemoteRule,
+  onFocusHost,
+  onHideHost,
 }: SessionListProps) {
   const filtered = useMemo(
     () => entries.filter((e) => matchesSearch(e, searchQuery)),
@@ -112,6 +117,7 @@ export function SessionList({
               const isMapRemote = Boolean(entry.matchedMapRemoteRuleId);
               const isAwaitingBreakpoint = Boolean(entry.awaitingBreakpoint);
               const isFromComposer = Boolean(entry.fromComposer);
+              const displayHost = hostWithoutPort(entry.host);
               return (
                 <div
                   key={entry.id}
@@ -220,6 +226,15 @@ export function SessionList({
                         <DropdownMenuItem onSelect={() => onCreateMapRemoteRule?.(entry.id)}>
                           <ArrowRightLeft className="mr-2 h-4 w-4" />
                           Create Map Remote Rule
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onFocusHost?.(entry.host)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Focus on {displayHost}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onHideHost?.(entry.host)}>
+                          <EyeOff className="mr-2 h-4 w-4" />
+                          Hide {displayHost}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuSub>
