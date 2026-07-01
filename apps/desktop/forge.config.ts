@@ -6,7 +6,7 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
 import { copyMainExternals } from './scripts/copy-main-externals';
-import { copyMcpBundle } from './scripts/copy-mcp-bundle';
+import { copyMcpBundle, packagedResourcesDir } from './scripts/copy-mcp-bundle';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -20,7 +20,12 @@ const config: ForgeConfig = {
   hooks: {
     async packageAfterCopy(_forgeConfig, buildPath) {
       copyMainExternals(buildPath, __dirname);
-      copyMcpBundle(buildPath, __dirname);
+    },
+    async postPackage(_forgeConfig, { outputPaths, platform }) {
+      if (platform !== 'darwin') return;
+      for (const outputPath of outputPaths) {
+        copyMcpBundle(packagedResourcesDir(outputPath), __dirname);
+      }
     },
   },
   makers: [

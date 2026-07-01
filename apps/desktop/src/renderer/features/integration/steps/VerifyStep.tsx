@@ -1,5 +1,5 @@
 import { Button } from '@yanshuf/ui';
-import { Loader2, Check, X } from 'lucide-react';
+import { Loader2, Check, X, AlertCircle } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
 import type { IntegrationVerifyResult } from '@yanshuf/shared';
 import { CLIENT_LABEL, type IntegrationClient } from '@yanshuf/shared';
@@ -13,13 +13,13 @@ interface VerifyStepProps {
   onDone: () => void;
 }
 
-const CHECKS: { key: keyof IntegrationVerifyResult; label: string }[] = [
-  { key: 'nodeOk', label: 'Node.js on PATH' },
+const CHECKS: { key: keyof IntegrationVerifyResult; label: string; optional?: boolean }[] = [
+  { key: 'nodeOk', label: 'Node.js (from Yanshuf)', optional: true },
   { key: 'mcpConfigured', label: 'MCP configured' },
   { key: 'skillInstalled', label: 'Skill installed' },
   { key: 'hookInstalled', label: 'SessionEnd hook' },
-  { key: 'apiReachable', label: 'API reachable' },
-  { key: 'certTrusted', label: 'Certificate trusted' },
+  { key: 'apiReachable', label: 'API reachable', optional: true },
+  { key: 'certTrusted', label: 'Certificate trusted', optional: true },
 ];
 
 export function VerifyStep({
@@ -53,7 +53,7 @@ export function VerifyStep({
       <div>
         <h3 className="text-sm font-semibold">Verification</h3>
         <ul className="mt-3 space-y-2">
-          {CHECKS.map(({ key, label }, i) => {
+          {CHECKS.map(({ key, label, optional }, i) => {
             const ok = Boolean(verify[key]);
             return (
               <li
@@ -65,12 +65,17 @@ export function VerifyStep({
               >
                 {ok ? (
                   <Check className="h-4 w-4 text-emerald-600" />
+                ) : optional ? (
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
                 ) : (
                   <X className="h-4 w-4 text-destructive" />
                 )}
                 <span>{label}</span>
                 {key === 'nodeOk' && verify.nodeVersion && (
                   <span className="text-xs text-muted-foreground">({verify.nodeVersion})</span>
+                )}
+                {!ok && optional && (
+                  <span className="text-xs text-muted-foreground">(optional)</span>
                 )}
               </li>
             );

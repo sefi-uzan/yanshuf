@@ -171,7 +171,7 @@ function PrereqRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="font-medium">{label}</div>
-        {detail && <div className="text-muted-foreground">{detail}</div>}
+        {detail && <div className="break-words text-muted-foreground">{detail}</div>}
         {action}
       </div>
     </div>
@@ -194,14 +194,16 @@ export function PrerequisitesStep({
       <div>
         <h3 className="text-sm font-semibold">Before you connect</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Cursor and Claude Code launch the Yanshuf MCP server with <strong>node</strong> from your
-          PATH. HTTPS capture also needs a trusted certificate.
+          Cursor and Claude Code launch the Yanshuf MCP server with <strong>node</strong>. Yanshuf
+          checks your shell PATH here — if Node is missing below, the AI client may still find it on
+          its own. HTTPS capture also needs a trusted certificate.
         </p>
       </div>
       <PrerequisitesStrip prereqs={prereqs} onOpenCertificate={onOpenCertificate} />
       {!prereqs.allMet && (
         <p className="text-xs text-muted-foreground">
-          You can continue anyway — MCP or capture may not work until these are resolved.
+          You can continue anyway — undetected Node often still works in Cursor or Claude Code. Fix
+          the certificate before relying on HTTPS capture.
         </p>
       )}
       <button

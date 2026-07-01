@@ -3,7 +3,7 @@ import type { IntegrationPrerequisites, IntegrationVerifyResult } from '@yanshuf
 export type IntegrationFlowStep = 'prerequisites' | 'mcp' | 'skills' | 'hook' | 'verify';
 
 export const INTEGRATION_FLOW_STEPS: { id: IntegrationFlowStep; label: string }[] = [
-  { id: 'prerequisites', label: 'Prerequisites' },
+  { id: 'prerequisites', label: 'Setup' },
   { id: 'mcp', label: 'MCP' },
   { id: 'skills', label: 'Skills' },
   { id: 'hook', label: 'Hook' },
@@ -43,18 +43,12 @@ export function isIntegrationStepComplete(
       verify &&
         verify.mcpConfigured &&
         verify.skillInstalled &&
-        verify.hookInstalled &&
-        verify.nodeOk,
+        verify.hookInstalled,
     );
   }
   return false;
 }
 
 export function verifyAllCritical(verify: IntegrationVerifyResult): boolean {
-  return (
-    verify.mcpConfigured &&
-    verify.skillInstalled &&
-    verify.hookInstalled &&
-    verify.nodeOk
-  );
+  return verify.mcpConfigured && verify.skillInstalled && verify.hookInstalled;
 }

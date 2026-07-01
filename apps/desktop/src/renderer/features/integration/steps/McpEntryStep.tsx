@@ -1,4 +1,5 @@
 import { Button } from '@yanshuf/ui';
+import { cn } from '@yanshuf/ui/lib/utils';
 import { Loader2 } from 'lucide-react';
 import type { IntegrationStepResult } from '@yanshuf/shared';
 import { CLIENT_LABEL, type IntegrationClient } from '@yanshuf/shared';
@@ -20,7 +21,12 @@ export function McpEntryStep({ client, busy, result, onInstall }: McpEntryStepPr
         </p>
       </div>
       {result && (
-        <p className={result.ok ? 'text-sm text-emerald-600' : 'text-sm text-destructive'}>
+        <p
+          className={cn(
+            'break-words text-sm',
+            result.ok ? 'text-emerald-600' : 'text-destructive',
+          )}
+        >
           {result.message}
         </p>
       )}
