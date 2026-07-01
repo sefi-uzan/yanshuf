@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { app } from 'electron';
@@ -13,6 +13,7 @@ import type {
 } from '@yanshuf/shared';
 import { getMcpDataDir } from './auth';
 import { checkNodeOnPath } from './integration-prerequisites';
+import { resolveExecutable } from '../shell-path';
 
 export type { IntegrationClient, IntegrationStepResult, IntegrationVerifyResult, SkillInstallTarget };
 
@@ -32,10 +33,11 @@ export function bundledMcpPaths(): {
   cleanupSessionScript: string;
   manifestPath: string;
 } {
+  const mcpEntry = resolveBundledMcpEntry() ?? primaryMcpEntryPath();
   if (app.isPackaged) {
     const root = path.join(process.resourcesPath, 'mcp');
     return {
-      mcpEntry: path.join(root, 'index.js'),
+      mcpEntry,
       skillsSource: path.join(root, 'skills', 'yanshuf'),
       cleanupSessionScript: path.join(root, 'scripts', 'cleanup-session.sh'),
       manifestPath: path.join(root, 'integration-manifest.json'),
@@ -44,11 +46,43 @@ export function bundledMcpPaths(): {
 
   const monorepoRoot = path.resolve(app.getAppPath(), '..', '..');
   return {
-    mcpEntry: path.join(monorepoRoot, 'apps', 'mcp', 'dist', 'index.js'),
+    mcpEntry,
     skillsSource: path.join(monorepoRoot, 'apps', 'mcp', 'skills', 'yanshuf'),
     cleanupSessionScript: path.join(monorepoRoot, 'apps', 'mcp', 'scripts', 'cleanup-session.sh'),
     manifestPath: path.join(monorepoRoot, 'apps', 'mcp', 'integration-manifest.json'),
   };
+}
+
+function primaryMcpEntryPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'mcp', 'index.js');
+  }
+  const monorepoRoot = path.resolve(app.getAppPath(), '..', '..');
+  return path.join(monorepoRoot, 'apps', 'mcp', 'dist', 'index.js');
+}
+
+function mcpEntryCandidates(): string[] {
+  if (app.isPackaged) {
+    const root = path.join(process.resourcesPath, 'mcp');
+    return [path.join(root, 'index.js'), path.join(root, 'dist', 'index.js')];
+  }
+  const monorepoRoot = path.resolve(app.getAppPath(), '..', '..');
+  return [path.join(monorepoRoot, 'apps', 'mcp', 'dist', 'index.js')];
+}
+
+export function resolveBundledMcpEntry(): string | null {
+  for (const candidate of mcpEntryCandidates()) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function mcpEntryMissingMessage(): string {
+  const candidates = mcpEntryCandidates();
+  if (app.isPackaged) {
+    return `Yanshuf MCP server files are missing from this install (expected ${candidates.join(' or ')}). Reinstall Yanshuf from the latest release.`;
+  }
+  return `MCP entry not found. Run \`pnpm --filter @yanshuf/mcp build\` from the repo root.`;
 }
 
 export function bundledIntegrationManifest(): IntegrationManifest {
@@ -223,19 +257,19 @@ async function copyDirRecursive(src: string, dest: string): Promise<void> {
 }
 
 export async function installMcpEntry(client: IntegrationClient): Promise<IntegrationStepResult> {
-  const { mcpEntry } = bundledMcpPaths();
-  try {
-    await fs.access(mcpEntry);
-  } catch {
-    return { ok: false, message: `MCP entry not found at ${mcpEntry}. Build apps/mcp first.` };
+  const mcpEntry = resolveBundledMcpEntry();
+  if (!mcpEntry) {
+    return { ok: false, message: mcpEntryMissingMessage() };
   }
+
+  const nodeCommand = resolveExecutable('node') ?? 'node';
 
   if (client === 'cursor') {
     const configPath = homePath('.cursor', 'mcp.json');
     const existing = (await readJsonFile<{ mcpServers?: Record<string, unknown> }>(configPath)) ?? {};
     existing.mcpServers = {
       ...existing.mcpServers,
-      yanshuf: { command: 'node', args: [mcpEntry] },
+      yanshuf: { command: nodeCommand, args: [mcpEntry] },
     };
     await writeJsonFile(configPath, existing);
     return { ok: true, message: 'Added yanshuf MCP server to Cursor.', path: configPath };
@@ -246,7 +280,7 @@ export async function installMcpEntry(client: IntegrationClient): Promise<Integr
     (await readJsonFile<{ mcpServers?: Record<string, unknown> }>(configPath)) ?? {};
   existing.mcpServers = {
     ...existing.mcpServers,
-    yanshuf: { command: 'node', args: [mcpEntry] },
+    yanshuf: { command: nodeCommand, args: [mcpEntry] },
   };
   await writeJsonFile(configPath, existing);
   return { ok: true, message: 'Added yanshuf MCP server to Claude Code.', path: configPath };

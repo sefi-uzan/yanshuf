@@ -7,10 +7,10 @@
   "private": true,
   "scripts": {
     "start": "pnpm --filter @yanshuf/mcp build && electron-forge start",
-    "package": "electron-forge package",
+    "package": "pnpm --filter @yanshuf/mcp build && electron-forge package",
     "make": "pnpm --filter @yanshuf/mcp build && electron-forge make",
     "icons": "bash scripts/build-icons.sh",
-    "publish": "electron-forge publish",
+    "publish": "pnpm --filter @yanshuf/mcp build && electron-forge publish",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",

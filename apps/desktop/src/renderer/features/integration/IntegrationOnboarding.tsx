@@ -167,8 +167,8 @@ export function IntegrationOnboarding({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="max-w-lg gap-0 p-0">
-        <div className="border-b px-6 py-5">
+      <DialogContent className="flex max-h-[min(90vh,720px)] max-w-xl flex-col gap-0 overflow-hidden p-0">
+        <div className="shrink-0 border-b px-6 py-5">
           <DialogHeader className="space-y-3 text-left">
             <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400">
               <Bot className="h-5 w-5" />
@@ -190,7 +190,7 @@ export function IntegrationOnboarding({
           )}
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           {step === 0 && prereqs && (
             <PrerequisitesStep
               prereqs={prereqs}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergePathSegments } from '../../src/main/shell-path';
+import { mergePathSegments, resolveExecutable } from '../../src/main/shell-path';
 
 describe('mergePathSegments', () => {
   it('deduplicates while preserving first-seen order', () => {
@@ -14,5 +14,14 @@ describe('mergePathSegments', () => {
 
   it('returns empty string when no segments are provided', () => {
     expect(mergePathSegments(undefined, '')).toBe('');
+  });
+});
+
+describe('resolveExecutable', () => {
+  it('finds node when available on this machine', () => {
+    const nodePath = resolveExecutable('node');
+    if (nodePath) {
+      expect(nodePath).toMatch(/node$/);
+    }
   });
 });

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { IntegrationPrerequisites } from '@yanshuf/shared';
 import { INTEGRATION_MIN_NODE_VERSION } from '@yanshuf/shared';
+import { resolveExecutable } from '../shell-path';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,8 +21,17 @@ function compareSemver(a: string, b: string): number {
 }
 
 export async function checkNodeOnPath(): Promise<IntegrationPrerequisites['node']> {
+  const nodePath = resolveExecutable('node');
+  if (!nodePath) {
+    return {
+      ok: false,
+      message:
+        `Node.js was not detected from Yanshuf's environment. Cursor and Claude Code use their own shell and may still find Node — you can continue and try the MCP install. Install Node ${INTEGRATION_MIN_NODE_VERSION}+ (nodejs.org, Homebrew, or nvm) if MCP fails to start.`,
+    };
+  }
+
   try {
-    const { stdout } = await execFileAsync('node', ['-v'], { env: process.env });
+    const { stdout } = await execFileAsync(nodePath, ['-v'], { env: process.env });
     const version = parseNodeVersion(stdout);
     const ok = compareSemver(version, INTEGRATION_MIN_NODE_VERSION) >= 0;
     return {
@@ -34,7 +44,8 @@ export async function checkNodeOnPath(): Promise<IntegrationPrerequisites['node'
   } catch {
     return {
       ok: false,
-      message: `Node.js not found on PATH. Install Node ${INTEGRATION_MIN_NODE_VERSION}+ from nodejs.org or use nvm.`,
+      message:
+        `Node.js was not detected from Yanshuf's environment. Cursor and Claude Code may still find Node on their own — you can continue and try the MCP install.`,
     };
   }
 }
