@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  focusHostCaptureFilter,
-  hideHostCaptureFilter,
+  addHostToCaptureFilter,
   hostToFilterPattern,
   hostWithoutPort,
   isCaptureFilterActive,
@@ -80,20 +79,22 @@ describe('url-filter', () => {
     expect(hostToFilterPattern('cdn.example.com:443')).toBe('*cdn.example.com*');
   });
 
-  it('focuses and hides hosts via filter settings', () => {
-    expect(focusHostCaptureFilter('api.example.com')).toEqual({
+  it('adds hosts to the current filter set without changing mode', () => {
+    expect(addHostToCaptureFilter({ mode: 'include', urls: '' }, 'api.example.com')).toEqual({
       mode: 'include',
       urls: '*api.example.com*',
     });
 
-    expect(hideHostCaptureFilter({ mode: 'exclude', urls: '*.google.com' }, 'cdn.example.com')).toEqual({
-      mode: 'exclude',
-      urls: '*.google.com;*cdn.example.com*',
+    expect(
+      addHostToCaptureFilter({ mode: 'include', urls: '*.api.com' }, 'cdn.example.com'),
+    ).toEqual({
+      mode: 'include',
+      urls: '*.api.com;*cdn.example.com*',
     });
 
-    expect(hideHostCaptureFilter({ mode: 'include', urls: '*.api.com' }, 'cdn.example.com')).toEqual({
+    expect(addHostToCaptureFilter({ mode: 'exclude', urls: '*.google.com' }, 'cdn.example.com')).toEqual({
       mode: 'exclude',
-      urls: '*cdn.example.com*',
+      urls: '*.google.com;*cdn.example.com*',
     });
   });
 

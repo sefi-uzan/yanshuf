@@ -6,7 +6,7 @@ import { cn } from '@yanshuf/ui/lib/utils';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Shield, Bot, Eye, EyeOff } from 'lucide-react';
+import { Shield, Bot, Eye, EyeOff, Filter } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import type { DetailMode } from './detailMode';
@@ -125,18 +125,14 @@ export function CaptureView({
     }
   };
 
-  const applyHostFilter = async (type: 'focusHost' | 'hideHost', host: string) => {
+  const addHostToFilterSet = async (host: string) => {
     const label = hostWithoutPort(host);
     try {
-      const next = await window.yanshuf.captureFilter.apply({ type, host });
+      const next = await window.yanshuf.captureFilter.apply({ type: 'addHost', host });
       setStatus(next);
-      if (type === 'focusHost') {
-        notifyApplied('Host focus', `Showing only ${label}`);
-      } else {
-        notifyApplied('Host hidden', `${label} removed from the list`);
-      }
+      notifyApplied('Filter updated', `Added ${label} to the current filter set`);
     } catch (err) {
-      notifyActionFailed(type === 'focusHost' ? 'focus on host' : 'hide host', err);
+      notifyActionFailed('add to filter set', err);
     }
   };
 
@@ -171,8 +167,7 @@ export function CaptureView({
             onAddToComposer={onAddToComposer}
             onCreateRule={onCreateRule}
             onCreateMapRemoteRule={onCreateMapRemoteRule}
-            onFocusHost={(host) => void applyHostFilter('focusHost', host)}
-            onHideHost={(host) => void applyHostFilter('hideHost', host)}
+            onAddToFilterSet={(host) => void addHostToFilterSet(host)}
           />
         </Panel>
         <Separator className="w-1 bg-border transition-colors hover:bg-primary/30" />
@@ -262,23 +257,18 @@ function StatusBar({
         : 'Install root certificate';
 
   const filter = status?.captureFilter;
-  const filterVisible =
-    filter && (filter.active || ((status?.running ?? false) && filter.hiddenCount > 0));
-  const FilterIcon = filter?.mode === 'include' ? Eye : EyeOff;
-  const filterLabel =
-    filter && filter.hiddenCount > 0
-      ? `${filter.hiddenCount} hidden`
-      : filter?.active
-        ? filter.mode === 'include'
-          ? 'Show only'
-          : 'Hidden'
-        : '';
-  const filterTitle = filter
-    ? filter.active
-      ? filter.mode === 'include'
-        ? `Showing only ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
-        : `Hiding ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
-      : `${filter.hiddenCount} proxied request(s) hidden from the list (localhost, self-traffic, etc.) but still forwarded.`
+  const FilterIcon = filter?.active
+    ? filter.mode === 'include'
+      ? Eye
+      : EyeOff
+    : Filter;
+  const filterLabel = filter?.active
+    ? `Filtering: ${filter.hiddenCount} hidden`
+    : 'Filters';
+  const filterTitle = filter?.active
+    ? filter.mode === 'include'
+      ? `Showing only ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
+      : `Hiding ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
     : 'Capture filters';
 
   return (
@@ -295,32 +285,6 @@ function StatusBar({
           active={status?.throttle.enabled ?? false}
           onToggle={onToggleThrottle}
         />
-      </div>
-      <button
-        type="button"
-        className={cn(
-          'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
-          certStatus?.trusted === 'installed' &&
-            'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-          certStatus?.trusted === 'untrusted' &&
-            'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-          certStatus?.trusted !== 'installed' &&
-            certStatus?.trusted !== 'untrusted' &&
-            'border-border bg-background/60 text-muted-foreground',
-        )}
-        onClick={() => onOpenCertificateSettings?.()}
-        title={certTitle}
-      >
-        <Shield
-          className={cn(
-            'h-3.5 w-3.5',
-            certStatus?.trusted === 'installed' && 'text-emerald-600 dark:text-emerald-400',
-            certStatus?.trusted === 'untrusted' && 'text-amber-600 dark:text-amber-400',
-          )}
-        />
-        {certLabel}
-      </button>
-      {filterVisible ? (
         <button
           type="button"
           className={cn(
@@ -340,43 +304,69 @@ function StatusBar({
           />
           {filterLabel}
         </button>
-      ) : null}
-      <button
-        type="button"
-        className={cn(
-          'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
-          integrationStatus === 'installed' &&
-            'border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-400',
-          integrationStatus === 'update_available' &&
-            'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-          integrationStatus === 'not_installed' &&
-            'border-border bg-background/60 text-muted-foreground',
-        )}
-        onClick={() => onOpenAiSettings?.()}
-        title={
-          integrationStatus === 'installed'
-            ? 'AI integration connected'
-            : integrationStatus === 'update_available'
-              ? 'AI integration update available'
-              : 'Set up AI integration'
-        }
-      >
-        <Bot
+      </div>
+      <div className="flex flex-1 items-center justify-center gap-2">
+        <button
+          type="button"
           className={cn(
-            'h-3.5 w-3.5',
-            integrationStatus === 'installed' && 'text-teal-600 dark:text-teal-400',
-            integrationStatus === 'update_available' && 'text-amber-600 dark:text-amber-400',
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
+            certStatus?.trusted === 'installed' &&
+              'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+            certStatus?.trusted === 'untrusted' &&
+              'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+            certStatus?.trusted !== 'installed' &&
+              certStatus?.trusted !== 'untrusted' &&
+              'border-border bg-background/60 text-muted-foreground',
           )}
-        />
-        {integrationStatus === 'installed'
-          ? 'AI connected'
-          : integrationStatus === 'update_available'
-            ? 'AI update'
-            : 'AI'}
-      </button>
-      <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
-      <span className="text-muted-foreground">Entries: {entryCount}</span>
-      <div className="ml-auto flex items-center gap-2">
+          onClick={() => onOpenCertificateSettings?.()}
+          title={certTitle}
+        >
+          <Shield
+            className={cn(
+              'h-3.5 w-3.5',
+              certStatus?.trusted === 'installed' && 'text-emerald-600 dark:text-emerald-400',
+              certStatus?.trusted === 'untrusted' && 'text-amber-600 dark:text-amber-400',
+            )}
+          />
+          {certLabel}
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
+            integrationStatus === 'installed' &&
+              'border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-400',
+            integrationStatus === 'update_available' &&
+              'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+            integrationStatus === 'not_installed' &&
+              'border-border bg-background/60 text-muted-foreground',
+          )}
+          onClick={() => onOpenAiSettings?.()}
+          title={
+            integrationStatus === 'installed'
+              ? 'AI integration connected'
+              : integrationStatus === 'update_available'
+                ? 'AI integration update available'
+                : 'Set up AI integration'
+          }
+        >
+          <Bot
+            className={cn(
+              'h-3.5 w-3.5',
+              integrationStatus === 'installed' && 'text-teal-600 dark:text-teal-400',
+              integrationStatus === 'update_available' && 'text-amber-600 dark:text-amber-400',
+            )}
+          />
+          {integrationStatus === 'installed'
+            ? 'AI connected'
+            : integrationStatus === 'update_available'
+              ? 'AI update'
+              : 'AI'}
+        </button>
+        <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
+        <span className="text-muted-foreground">Entries: {entryCount}</span>
+      </div>
+      <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" className="h-7 gap-2 px-2 text-muted-foreground" onClick={onClear}>
           Clear
           <ShortcutHint keys={SHORTCUTS.clearSession.keys} />

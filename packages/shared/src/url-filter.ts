@@ -78,25 +78,17 @@ export function mergeFilterPatterns(existing: string, additions: string[]): stri
   return merged.join(';');
 }
 
-export function focusHostCaptureFilter(host: string): CaptureFilterSettings {
-  return {
-    mode: 'include',
-    urls: hostToFilterPattern(host),
-  };
-}
-
-export function hideHostCaptureFilter(
+export function addHostToCaptureFilter(
   current: CaptureFilterSettings,
   host: string,
 ): CaptureFilterSettings {
   const pattern = hostToFilterPattern(host);
   return {
-    mode: 'exclude',
-    urls: mergeFilterPatterns(current.mode === 'exclude' ? current.urls : '', [pattern]),
+    mode: current.mode,
+    urls: mergeFilterPatterns(current.urls, [pattern]),
   };
 }
 
 export type CaptureFilterApplyAction =
-  | { type: 'focusHost'; host: string }
-  | { type: 'hideHost'; host: string }
+  | { type: 'addHost'; host: string }
   | { type: 'clear' };

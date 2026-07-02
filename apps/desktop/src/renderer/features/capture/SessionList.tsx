@@ -14,8 +14,7 @@ import { Badge ,
 import { cn } from '@yanshuf/ui/lib/utils';
 import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
 import { captureToComposerRequest , formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
-import { Copy, Ellipsis, Eye, EyeOff, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
-import { hostWithoutPort } from '@yanshuf/shared';
+import { Copy, Ellipsis, Filter, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
 
 interface SessionListProps {
   entries: CaptureEntrySummary[];
@@ -26,8 +25,7 @@ interface SessionListProps {
   onAddToComposer?: (id: string) => void;
   onCreateRule?: (id: string) => void;
   onCreateMapRemoteRule?: (id: string) => void;
-  onFocusHost?: (host: string) => void;
-  onHideHost?: (host: string) => void;
+  onAddToFilterSet?: (host: string) => void;
 }
 
 function statusVariant(status: number): 'success' | 'warning' | 'error' | 'secondary' {
@@ -60,8 +58,7 @@ export function SessionList({
   onAddToComposer,
   onCreateRule,
   onCreateMapRemoteRule,
-  onFocusHost,
-  onHideHost,
+  onAddToFilterSet,
 }: SessionListProps) {
   const filtered = useMemo(
     () => entries.filter((e) => matchesSearch(e, searchQuery)),
@@ -117,7 +114,6 @@ export function SessionList({
               const isMapRemote = Boolean(entry.matchedMapRemoteRuleId);
               const isAwaitingBreakpoint = Boolean(entry.awaitingBreakpoint);
               const isFromComposer = Boolean(entry.fromComposer);
-              const displayHost = hostWithoutPort(entry.host);
               return (
                 <div
                   key={entry.id}
@@ -228,13 +224,9 @@ export function SessionList({
                           Create Map Remote Rule
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => onFocusHost?.(entry.host)}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          Focus on {displayHost}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => onHideHost?.(entry.host)}>
-                          <EyeOff className="mr-2 h-4 w-4" />
-                          Hide {displayHost}
+                        <DropdownMenuItem onSelect={() => onAddToFilterSet?.(entry.host)}>
+                          <Filter className="mr-2 h-4 w-4" />
+                          Add to current filter set
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuSub>
