@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
-import { ShortcutHint } from '@/components/shortcut-hints';
 import { SHORTCUTS } from '@yanshuf/shared';
 
 const EXPANDED_WIDTH_PX = 1120;
-const VIEWPORT_LEFT_GUTTER_PX = 16;
+const VIEWPORT_RIGHT_GUTTER_PX = 16;
 
 interface ExpandableSearchProps {
   value: string;
@@ -14,8 +13,9 @@ interface ExpandableSearchProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function maxExpandedWidth(slotRight: number): number {
-  return Math.max(0, slotRight - VIEWPORT_LEFT_GUTTER_PX);
+function maxExpandedWidth(slotLeft: number): number {
+  if (typeof window === 'undefined') return EXPANDED_WIDTH_PX;
+  return Math.max(0, window.innerWidth - slotLeft - VIEWPORT_RIGHT_GUTTER_PX);
 }
 
 export function ExpandableSearch({ value, onChange, open, onOpenChange }: ExpandableSearchProps) {
@@ -29,8 +29,8 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
 
   const updateWidth = useCallback(() => {
     if (open) {
-      const slotRight = slotRef.current?.getBoundingClientRect().right ?? 0;
-      setWidth(Math.min(EXPANDED_WIDTH_PX, maxExpandedWidth(slotRight)));
+      const slotLeft = slotRef.current?.getBoundingClientRect().left ?? 0;
+      setWidth(Math.min(EXPANDED_WIDTH_PX, maxExpandedWidth(slotLeft)));
       return;
     }
     setWidth(measureCollapsedWidth());
@@ -68,7 +68,7 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
   }, [open, value, onChange, onOpenChange]);
 
   const collapsedClassName = cn(
-    'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-[7px] px-2.5 text-xs font-medium',
+    'inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-xs font-medium',
     'hover:bg-accent hover:text-accent-foreground',
     hasFilter && 'bg-accent text-accent-foreground',
   );
@@ -81,21 +81,18 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
         className={cn('pointer-events-none invisible absolute inline-flex', collapsedClassName)}
       >
         <Search className="h-3.5 w-3.5 shrink-0" />
-        <span>Search</span>
-        <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" />
       </div>
 
-      {/* In-flow ghost keeps the dock width stable while search overlays left */}
+      {/* In-flow ghost keeps toolbar layout stable while search expands to the right */}
       <div className={cn(open && 'invisible')} aria-hidden={open}>
         <button
           type="button"
+          aria-label={SHORTCUTS.search.label}
           title={`${SHORTCUTS.search.label} (${SHORTCUTS.search.keys.join('+')})`}
           onClick={() => onOpenChange(true)}
           className={collapsedClassName}
         >
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span>Search</span>
-          <ShortcutHint keys={SHORTCUTS.search.keys} className="ml-1" />
         </button>
       </div>
 
@@ -103,7 +100,7 @@ export function ExpandableSearch({ value, onChange, open, onOpenChange }: Expand
         <div
           style={width !== null ? { width } : undefined}
           className={cn(
-            'absolute right-0 top-0 z-20 inline-flex h-7 items-center overflow-hidden',
+            'absolute left-0 top-0 z-20 inline-flex h-7 items-center overflow-hidden',
             'rounded-[7px] border border-input bg-background px-2.5 shadow-md ring-1 ring-ring/10',
             'transition-[width] duration-[420ms] ease-[cubic-bezier(0.16,1,0.3,1)]',
           )}

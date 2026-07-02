@@ -34,6 +34,7 @@ export default function App() {
   const [proxyStatusNonce, setProxyStatusNonce] = useState(0);
   const firstRunChecked = useRef(false);
   const pendingTourRef = useRef(false);
+  const tourDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshCertStatus = useCallback(() => {
     void window.yanshuf.cert.status().then(setCertStatus);
@@ -103,17 +104,21 @@ export default function App() {
     pendingTourRef.current = false;
     const settings = await window.yanshuf.settings.get();
     if (!settings.guidedTourCompleted) {
-      setTourOpen(true);
+      if (tourDelayTimerRef.current) clearTimeout(tourDelayTimerRef.current);
+      tourDelayTimerRef.current = setTimeout(() => {
+        tourDelayTimerRef.current = null;
+        setTourOpen(true);
+      }, 1000);
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (tourDelayTimerRef.current) clearTimeout(tourDelayTimerRef.current);
+    };
+  }, []);
+
   const handleCertOnboardingComplete = useCallback(async () => {
-    try {
-      await window.yanshuf.proxy.start();
-    } catch {
-      // Tour still runs; status bar reflects failure on next refresh.
-    }
-    setProxyStatusNonce((n) => n + 1);
     const settings = await window.yanshuf.settings.get();
     if (!settings.guidedTourCompleted) {
       pendingTourRef.current = true;

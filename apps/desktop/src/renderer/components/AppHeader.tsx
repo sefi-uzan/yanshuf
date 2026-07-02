@@ -30,53 +30,53 @@ export function AppHeader({
   onOpenSettings,
 }: AppHeaderProps) {
   return (
-    <header className="flex items-center justify-center border-b px-4 py-2">
-      <div
-        data-tour="rules-composer"
-        className={cn(
-          'inline-flex items-center gap-0.5 rounded-[10px] border border-border/50 bg-muted/20 p-0.5',
-          'shadow-[inset_0_1px_0_0_hsl(var(--foreground)/0.04)]',
-        )}
-      >
-        <ExpandableSearch
-          value={searchQuery}
-          onChange={onSearchChange}
-          open={searchOpen}
-          onOpenChange={onSearchOpenChange}
-        />
-
-        <ToolbarDivider />
-
-        <Button
-          variant={detailMode === 'rules' ? 'secondary' : 'ghost'}
-          size="sm"
-          className="h-7 rounded-[7px] px-2.5"
-          onClick={() => onToggleDetailMode('rules')}
+    <header className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b px-4 py-2">
+      <ExpandableSearch
+        value={searchQuery}
+        onChange={onSearchChange}
+        open={searchOpen}
+        onOpenChange={onSearchOpenChange}
+      />
+      <div className="flex min-w-0 justify-center">
+        <div
+          data-tour="rules-composer"
+          className={cn(
+            'inline-flex items-center gap-0.5 rounded-[10px] border border-border/50 bg-muted/20 p-0.5',
+            'shadow-[inset_0_1px_0_0_hsl(var(--foreground)/0.04)]',
+          )}
         >
-          <Zap className="mr-1 h-3.5 w-3.5" />
-          Rules
-          <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-1.5" />
-        </Button>
+          <Button
+            variant={detailMode === 'rules' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 rounded-[7px] px-2.5"
+            onClick={() => onToggleDetailMode('rules')}
+          >
+            <Zap className="mr-1 h-3.5 w-3.5" />
+            Rules
+            <ShortcutHint keys={SHORTCUTS.autoResponder.keys} className="ml-1.5" />
+          </Button>
 
-        <Button
-          variant={detailMode === 'composer' ? 'secondary' : 'ghost'}
-          size="sm"
-          className="h-7 rounded-[7px] px-2.5"
-          onClick={() => onToggleDetailMode('composer')}
-        >
-          <PenLine className="mr-1 h-3.5 w-3.5" />
-          Composer
-          <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-1.5" />
-        </Button>
+          <Button
+            variant={detailMode === 'composer' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 rounded-[7px] px-2.5"
+            onClick={() => onToggleDetailMode('composer')}
+          >
+            <PenLine className="mr-1 h-3.5 w-3.5" />
+            Composer
+            <ShortcutHint keys={SHORTCUTS.composer.keys} className="ml-1.5" />
+          </Button>
 
-        <ToolbarDivider />
+          <ToolbarDivider />
 
-        <Button variant="ghost" size="sm" className="h-7 rounded-[7px] px-2.5" onClick={onOpenSettings}>
-          <Settings className="mr-1 h-3.5 w-3.5" />
-          Settings
-          <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-1.5" />
-        </Button>
+          <Button variant="ghost" size="sm" className="h-7 rounded-[7px] px-2.5" onClick={onOpenSettings}>
+            <Settings className="mr-1 h-3.5 w-3.5" />
+            Settings
+            <ShortcutHint keys={SHORTCUTS.settings.keys} className="ml-1.5" />
+          </Button>
+        </div>
       </div>
+      <div className="h-7 w-7 shrink-0" aria-hidden />
     </header>
   );
 }

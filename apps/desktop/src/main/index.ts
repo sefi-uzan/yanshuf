@@ -18,8 +18,7 @@ import {
   DEFAULT_THROTTLE,
   IPC_CHANNELS,
   exportCurl,
-  focusHostCaptureFilter,
-  hideHostCaptureFilter,
+  addHostToCaptureFilter,
   mergeThrottleSettings,
   normalizeAppSettings,
   shouldRecordCapture,
@@ -297,11 +296,8 @@ async function applyCaptureFilterAction(action: CaptureFilterApplyAction): Promi
   let next = current;
 
   switch (action.type) {
-    case 'focusHost':
-      next = focusHostCaptureFilter(action.host);
-      break;
-    case 'hideHost':
-      next = hideHostCaptureFilter(current, action.host);
+    case 'addHost':
+      next = addHostToCaptureFilter(current, action.host);
       break;
     case 'clear':
       next = { ...DEFAULT_CAPTURE_FILTER };
