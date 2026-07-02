@@ -55,6 +55,11 @@ import {
   type IntegrationRegistryService,
 } from './mcp-api/integration-registry';
 import type { IntegrationUninstallPayload, IntegrationVerifyParams, SkillInstallTarget } from '@yanshuf/shared';
+import {
+  checkForUpdatesManual,
+  openExternalUrl,
+  startUpdateChecks,
+} from './updater';
 import { augmentProcessPath } from './shell-path';
 
 augmentProcessPath();
@@ -744,6 +749,14 @@ function registerIpc(): void {
     if (result.canceled || !result.filePaths[0]) return null;
     return result.filePaths[0];
   });
+
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion());
+
+  ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATES, () => checkForUpdatesManual());
+
+  ipcMain.handle(IPC_CHANNELS.APP_OPEN_EXTERNAL, (_e, url: string) => {
+    openExternalUrl(url);
+  });
 }
 
 const createWindow = async () => {
@@ -820,6 +833,7 @@ if (hasSingleInstanceLock) {
     applyAppIcon();
     applyContentSecurityPolicy();
     await createWindow();
+    startUpdateChecks();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

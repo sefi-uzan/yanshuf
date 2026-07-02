@@ -146,7 +146,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
     );
 
     const clientOutdated =
-      Boolean(clientRecord) &&
+      clientRecord != null &&
       (clientRecord.bundleVersion !== manifest.bundleVersion ||
         clientRecord.skillContentHash !== manifest.skillContentHash ||
         skillStatuses.some((s) => s.outdated));

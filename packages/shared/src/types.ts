@@ -280,12 +280,25 @@ export const IPC_CHANNELS = {
   MCP_INTEGRATION_DISMISS_PROMPT: 'mcp:integration-dismiss-prompt',
   DIALOG_PICK_DIRECTORY: 'dialog:pick-directory',
   APP_NOTIFY: 'app:notify',
+  APP_GET_VERSION: 'app:get-version',
+  APP_CHECK_FOR_UPDATES: 'app:check-for-updates',
+  APP_OPEN_EXTERNAL: 'app:open-external',
 } as const;
+
+export type UpdateCheckResult = {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  error?: string;
+};
 
 export type AppNotifyPayload = {
   title: string;
   description?: string;
   variant?: 'error' | 'success' | 'info';
+  externalUrl?: string;
+  externalLabel?: string;
 };
 
 export type MenuAction =

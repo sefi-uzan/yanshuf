@@ -8,6 +8,24 @@ import path from 'node:path';
 import { copyMainExternals } from './scripts/copy-main-externals';
 import { copyMcpBundle, packagedResourcesDir } from './scripts/copy-mcp-bundle';
 
+const entitlementsPath = path.resolve(__dirname, 'entitlements.plist');
+
+const signingConfig = process.env.APPLE_SIGNING_IDENTITY
+  ? {
+      osxSign: {
+        identity: process.env.APPLE_SIGNING_IDENTITY,
+        hardenedRuntime: true,
+        entitlements: entitlementsPath,
+        'entitlements-inherit': entitlementsPath,
+      },
+      osxNotarize: {
+        appleId: process.env.APPLE_ID!,
+        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD!,
+        teamId: process.env.APPLE_TEAM_ID!,
+      },
+    }
+  : {};
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -15,6 +33,7 @@ const config: ForgeConfig = {
     appBundleId: 'com.yanshuf.app',
     icon: path.resolve(__dirname, 'assets/icon'),
     extraResource: [path.resolve(__dirname, 'assets')],
+    ...signingConfig,
   },
   rebuildConfig: {},
   hooks: {
@@ -28,13 +47,20 @@ const config: ForgeConfig = {
       }
     },
   },
-  makers: [
-    new MakerDMG({}, ['darwin']),
+  makers: [new MakerDMG({}, ['darwin'])],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'sefi-uzan',
+          name: 'yanshuf',
+        },
+      },
+    },
   ],
   plugins: [
     new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
       build: [
         {
           entry: 'src/main.ts',
@@ -55,8 +81,6 @@ const config: ForgeConfig = {
       ],
     }),
     new AutoUnpackNativesPlugin({}),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,

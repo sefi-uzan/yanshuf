@@ -26,6 +26,7 @@ import type {
   SkillInstallTarget,
   AppNotifyPayload,
   ThrottleSetPatch,
+  UpdateCheckResult,
 } from '@yanshuf/shared';
 import { IPC_CHANNELS } from '@yanshuf/shared';
 
@@ -124,6 +125,9 @@ export interface YanshufAPI {
     onAction: (callback: (action: MenuAction) => void) => () => void;
   };
   app: {
+    getVersion: () => Promise<string>;
+    checkForUpdates: () => Promise<UpdateCheckResult>;
+    openExternal: (url: string) => Promise<void>;
     onNotify: (callback: (payload: AppNotifyPayload) => void) => () => void;
   };
 }
@@ -221,6 +225,9 @@ const api: YanshufAPI = {
     },
   },
   app: {
+    getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),
+    checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.APP_CHECK_FOR_UPDATES),
+    openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_EXTERNAL, url),
     onNotify: (callback) => {
       const handler = (_: Electron.IpcRendererEvent, payload: AppNotifyPayload) => callback(payload);
       ipcRenderer.on(IPC_CHANNELS.APP_NOTIFY, handler);

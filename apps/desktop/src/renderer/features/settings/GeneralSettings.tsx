@@ -4,6 +4,7 @@ import { THROTTLE_PRESET_VALUES } from '@yanshuf/shared';
 import { Input, Switch } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { CaptureFilterFields } from './CaptureFilterFields';
+import { AppUpdatesSection } from './AppUpdatesSection';
 import { SettingsCard, SettingsField, SettingsSection } from './SettingsLayout';
 
 const THROTTLE_PRESET_OPTIONS: { value: ThrottlePreset; label: string }[] = [
@@ -219,6 +220,8 @@ export function GeneralSettings({
           </div>
         </SettingsCard>
       </SettingsSection>
+
+      <AppUpdatesSection />
     </div>
   );
 }
