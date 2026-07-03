@@ -181,8 +181,8 @@ export interface CertStatus {
   trusted: 'unknown' | 'installed' | 'untrusted';
   caPath?: string;
   commonName?: string;
-  /** Whether the local CA certificate is in the login keychain. */
-  keychainLocation?: 'none' | 'login';
+  /** Which keychain the local CA certificate lives in. */
+  keychainLocation?: 'none' | 'login' | 'system';
 }
 
 export interface CaptureFilterStatus {

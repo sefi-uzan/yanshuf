@@ -525,7 +525,7 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.CERT_EXPORT, () => certManager.exportCertificate());
 
-  ipcMain.handle(IPC_CHANNELS.CERT_INSTALL, () => certManager.installToLoginKeychain());
+  ipcMain.handle(IPC_CHANNELS.CERT_INSTALL, () => certManager.install());
 
   ipcMain.handle(IPC_CHANNELS.CERT_OPEN_KEYCHAIN, () => certManager.openKeychainAccess());
 

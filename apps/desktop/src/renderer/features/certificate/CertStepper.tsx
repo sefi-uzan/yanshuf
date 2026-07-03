@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Check, CheckCircle2, AlertCircle, Circle } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
 import {
@@ -24,27 +25,32 @@ export function CertStepper({ trusted, variant = 'stepper', className }: CertSte
   const current = getCertFlowStep(trusted);
 
   return (
-    <ol className={cn('flex items-center gap-2', className)}>
+    <ol className={cn('flex items-center gap-3', className)}>
       {CERT_FLOW_STEPS.map((step, index) => {
         const done = isCertFlowStepComplete(step.id, trusted);
         const isCurrent = step.id === current && trusted !== 'installed';
         const isReady = step.id === 'ready' && trusted === 'installed';
 
         return (
-          <li key={step.id} className="flex flex-1 items-center gap-2">
-            <StepIndicator done={done} isCurrent={isCurrent} isReady={isReady} />
-            <span
-              className={cn(
-                'text-xs font-medium',
-                done || isCurrent || isReady ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {step.label}
-            </span>
+          <Fragment key={step.id}>
+            <li className="flex shrink-0 items-center gap-2">
+              <StepIndicator done={done} isCurrent={isCurrent} isReady={isReady} />
+              <span
+                className={cn(
+                  'text-xs font-medium',
+                  done || isCurrent || isReady ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {step.label}
+              </span>
+            </li>
             {index < CERT_FLOW_STEPS.length - 1 && (
-              <div className={cn('mx-1 h-px flex-1', done ? 'bg-emerald-600/40' : 'bg-border')} />
+              <div
+                className={cn('h-px flex-1', done ? 'bg-emerald-600/40' : 'bg-border')}
+                aria-hidden
+              />
             )}
-          </li>
+          </Fragment>
         );
       })}
     </ol>
@@ -63,8 +69,8 @@ function InlineCertStepper({
     trusted === 'installed'
       ? 'Login keychain · trusted'
       : trusted === 'untrusted'
-        ? 'Login keychain · needs Always Trust'
-        : 'Login keychain · not installed';
+        ? 'Installed · not trusted'
+        : 'Not installed';
 
   return (
     <div

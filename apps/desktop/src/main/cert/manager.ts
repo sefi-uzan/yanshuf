@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { shell } from 'electron';
@@ -10,6 +11,7 @@ import {
   CA_EXPORT_FILENAME,
   INSTALL_CER_PATH,
   KEYCHAIN_ACCESS,
+  SYSTEM_KEYCHAIN,
 } from './constants';
 import {
   caFilesExist,
@@ -22,13 +24,31 @@ import {
 const execFileAsync = promisify(execFile);
 
 export interface CertInstallResult {
-  alreadyInstalled: boolean;
-  needsManualTrust: boolean;
+  /** The CA was already trusted; no prompt was shown. */
+  alreadyTrusted: boolean;
+  /** The CA is trusted after this call. */
+  trusted: boolean;
 }
 
-function isCertAlreadyExistsError(err: unknown): boolean {
-  const message = err instanceof Error ? `${err.message}\n${('stderr' in err ? String((err as NodeJS.ErrnoException & { stderr?: string }).stderr) : '')}` : String(err);
-  return /already exists in the keychain/i.test(message);
+/** Thrown when the user dismisses the macOS trust authorization prompt. */
+export class TrustDeniedError extends Error {
+  constructor() {
+    super('Setup was cancelled, so the certificate was not trusted.');
+    this.name = 'TrustDeniedError';
+  }
+}
+
+function errorText(err: unknown): string {
+  const stderr =
+    err && typeof err === 'object' && 'stderr' in err
+      ? String((err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '')
+      : '';
+  return `${err instanceof Error ? err.message : String(err)}\n${stderr}`;
+}
+
+function isUserCancelled(err: unknown): boolean {
+  // errAuthorizationCanceled (-60006) / user dismissing the SecurityAgent panel.
+  return /cancel|-60006|-128|User interaction is not allowed/i.test(errorText(err));
 }
 
 async function getLoginKeychainPath(): Promise<string> {
@@ -117,32 +137,37 @@ export class CertificateManager {
     return [...new Set([CA_COMMON_NAME, localCn].filter(Boolean) as string[])];
   }
 
-  private async findLocalCaInLoginKeychain(): Promise<string | null> {
-    const loginKeychain = await getLoginKeychainPath();
+  /**
+   * Locate the local CA in a keychain. Prefers the login keychain (where
+   * auto-trust installs it) and falls back to the System keychain so an
+   * untrusted copy left behind by an older/failed admin install is still
+   * recognized for status reporting.
+   */
+  private async findLocalCa(): Promise<{ pem: string; location: 'login' | 'system' } | null> {
     const localSha1 = await readSha1HexFromPemFile(this.caCertPath());
     const names = await this.localCaSearchNames();
-    return findMatchingLocalCaInKeychain(loginKeychain, localSha1, names);
+
+    const loginKeychain = await getLoginKeychainPath();
+    const inLogin = await findMatchingLocalCaInKeychain(loginKeychain, localSha1, names);
+    if (inLogin) return { pem: inLogin, location: 'login' };
+
+    const inSystem = await findMatchingLocalCaInKeychain(SYSTEM_KEYCHAIN, localSha1, names);
+    if (inSystem) return { pem: inSystem, location: 'system' };
+
+    return null;
   }
 
-  private async isTrustedInLoginKeychain(): Promise<boolean> {
+  /**
+   * Authoritative trust check: ask macOS whether the CA satisfies the SSL trust
+   * policy. No `-r` self-anchor, so this reflects real keychain trust settings
+   * and is true only once the root is genuinely trusted.
+   */
+  private async isCaTrusted(pem: string): Promise<boolean> {
     try {
-      const loginKeychain = await getLoginKeychainPath();
-      const pem = await this.findLocalCaInLoginKeychain();
-      if (!pem) return false;
-      const tmpPem = path.join('/tmp', 'yanshuf-ca-verify.pem');
+      const tmpPem = path.join(os.tmpdir(), 'yanshuf-ca-verify.pem');
       await fs.writeFile(tmpPem, pem, { mode: 0o644 });
-      await execFileAsync('security', [
-        'verify-cert',
-        '-c',
-        tmpPem,
-        '-r',
-        tmpPem,
-        '-l',
-        '-p',
-        'ssl',
-        '-k',
-        loginKeychain,
-      ]);
+      // `-l` lets the root be evaluated as the leaf certificate.
+      await execFileAsync('security', ['verify-cert', '-c', tmpPem, '-l', '-p', 'ssl']);
       return true;
     } catch {
       return false;
@@ -178,9 +203,9 @@ export class CertificateManager {
     try {
       await this.ensureCaGenerated();
       const commonName = await readCaCommonName(this.caCertPath());
-      const inLogin = await this.findLocalCaInLoginKeychain();
+      const found = await this.findLocalCa();
 
-      if (!inLogin) {
+      if (!found) {
         return {
           exists: true,
           trusted: 'unknown',
@@ -190,13 +215,13 @@ export class CertificateManager {
         };
       }
 
-      const trusted = await this.isTrustedInLoginKeychain();
+      const trusted = await this.isCaTrusted(found.pem);
       return {
         exists: true,
         trusted: trusted ? 'installed' : 'untrusted',
         caPath: this.caCertPath(),
         commonName,
-        keychainLocation: 'login',
+        keychainLocation: found.location,
       };
     } catch {
       return { exists: false, trusted: 'unknown', keychainLocation: 'none' };
@@ -204,54 +229,53 @@ export class CertificateManager {
   }
 
   /**
-   * Import root CA into the login keychain. macOS requires a manual
-   * "Always Trust" step afterward — Electron cannot set that automatically.
+   * Install the root CA into the login keychain and mark it trusted for the
+   * current user in a single step.
+   *
+   * Runs `security add-trusted-cert` directly (not through
+   * `osascript … with administrator privileges`). The trust-settings prompt can
+   * only be shown to a process attached to the GUI session; the osascript
+   * privilege trampoline runs detached and fails with "no user interaction was
+   * possible". As a direct child of the app we inherit the GUI session, so macOS
+   * presents its own authorization panel. The user (login) trust domain needs
+   * only the user's password — no admin rights and no System keychain writes.
    */
-  async installToLoginKeychain(): Promise<CertInstallResult> {
+  async install(): Promise<CertInstallResult> {
     if (process.platform !== 'darwin') {
-      throw new Error('Keychain install is only supported on macOS');
+      throw new Error('Certificate install is only supported on macOS');
     }
 
-    await this.writeCerFile(INSTALL_CER_PATH);
+    await this.ensureCaGenerated();
+
+    const existing = await this.findLocalCa();
+    if (existing && (await this.isCaTrusted(existing.pem))) {
+      return { alreadyTrusted: true, trusted: true };
+    }
+
+    const cerPath = await this.writeCerFile(INSTALL_CER_PATH);
     const loginKeychain = await getLoginKeychainPath();
 
-    const alreadyInstalled = await this.findLocalCaInLoginKeychain();
-    if (alreadyInstalled) {
-      const trusted = await this.isTrustedInLoginKeychain();
-      if (!trusted) {
-        await this.openKeychainAccess();
-      }
-      return { alreadyInstalled: true, needsManualTrust: !trusted };
-    }
-
-    await deleteCertByName(loginKeychain, CA_COMMON_NAME);
-
     try {
-      await execFileAsync('security', ['add-certificates', '-k', loginKeychain, INSTALL_CER_PATH]);
+      // No `-d`: target the per-user trust domain. `-r trustRoot` marks the CA
+      // as a trusted anchor. `-k` imports the cert into the login keychain.
       await execFileAsync('security', [
-        'find-certificate',
-        '-c',
-        CA_COMMON_NAME,
-        '-p',
+        'add-trusted-cert',
+        '-r',
+        'trustRoot',
+        '-k',
         loginKeychain,
+        cerPath,
       ]);
     } catch (err) {
-      const inLogin = await this.findLocalCaInLoginKeychain();
-      if (!inLogin) {
-        if (isCertAlreadyExistsError(err)) {
-          throw new Error(
-            `${CA_COMMON_NAME} already exists in your login keychain but could not be verified. Remove it in Keychain Access and try again.`,
-          );
-        }
-        throw err;
+      if (isUserCancelled(err)) {
+        throw new TrustDeniedError();
       }
+      throw err;
     }
 
-    const trusted = await this.isTrustedInLoginKeychain();
-    if (!trusted) {
-      await this.openKeychainAccess();
-    }
-    return { alreadyInstalled: false, needsManualTrust: !trusted };
+    const found = await this.findLocalCa();
+    const trusted = found ? await this.isCaTrusted(found.pem) : false;
+    return { alreadyTrusted: false, trusted };
   }
 
   async openKeychainAccess(): Promise<void> {
@@ -261,21 +285,16 @@ export class CertificateManager {
 
     await execFileAsync('osascript', ['-e', 'tell application "Keychain Access" to activate']);
 
-    const loginKeychain = await getLoginKeychainPath();
     try {
-      await execFileAsync('open', ['-a', 'Keychain Access', loginKeychain]);
+      await execFileAsync('open', ['-a', 'Keychain Access']);
       return;
     } catch {
       // fall through
     }
 
-    try {
-      await execFileAsync('open', ['-a', 'Keychain Access']);
-    } catch {
-      const result = await shell.openPath(KEYCHAIN_ACCESS);
-      if (result) {
-        throw new Error(`Could not open Keychain Access: ${result}`);
-      }
+    const result = await shell.openPath(KEYCHAIN_ACCESS);
+    if (result) {
+      throw new Error(`Could not open Keychain Access: ${result}`);
     }
   }
 
@@ -284,25 +303,24 @@ export class CertificateManager {
     const downloads = path.join(process.env.HOME ?? '', 'Downloads');
     const dest = path.join(downloads, CA_EXPORT_FILENAME);
     await this.writeCerFile(dest);
-    await this.openKeychainAccess();
     await shell.showItemInFolder(dest);
     return dest;
   }
 
   async verifyTrust(): Promise<{ trusted: boolean; error?: string }> {
-    const inLogin = await this.findLocalCaInLoginKeychain();
-    if (!inLogin) {
+    const found = await this.findLocalCa();
+    if (!found) {
       return {
         trusted: false,
-        error: 'Certificate not found in your login keychain. Click Install first.',
+        error: 'Certificate is not installed. Click Set up to install and trust it.',
       };
     }
 
-    const trusted = await this.isTrustedInLoginKeychain();
+    const trusted = await this.isCaTrusted(found.pem);
     if (!trusted) {
       return {
         trusted: false,
-        error: `Certificate is installed but not trusted. Double-click ${CA_COMMON_NAME} in Keychain Access → Trust → Always Trust.`,
+        error: `${CA_COMMON_NAME} is installed but not trusted. Click Set up to trust it.`,
       };
     }
 
@@ -314,6 +332,14 @@ export class CertificateManager {
       throw new Error('Keychain uninstall is only supported on macOS');
     }
 
+    const cerPath = await this.writeCerFile(INSTALL_CER_PATH).catch(() => null);
+
+    // Remove the per-user trust setting (may prompt for the user's password).
+    if (cerPath) {
+      await execFileAsync('security', ['remove-trusted-cert', cerPath]).catch(() => undefined);
+    }
+
+    // Delete the certificate from the login keychain (no prompt).
     const loginKeychain = await getLoginKeychainPath();
     await deleteCertByName(loginKeychain, CA_COMMON_NAME);
   }

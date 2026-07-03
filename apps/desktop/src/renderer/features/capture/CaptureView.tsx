@@ -253,7 +253,7 @@ function StatusBar({
     certStatus?.trusted === 'installed'
       ? 'Certificate installed and trusted'
       : certStatus?.trusted === 'untrusted'
-        ? 'Certificate needs Always Trust'
+        ? 'Certificate installed but not trusted'
         : 'Install root certificate';
 
   const filter = status?.captureFilter;

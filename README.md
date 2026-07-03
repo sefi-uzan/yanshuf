@@ -10,11 +10,11 @@ Route your system or application traffic through Yanshuf to capture every reques
 
 ### SSL Decryption
 
-Inspect encrypted HTTPS traffic with native SSL/TLS decryption. Yanshuf generates a **Yanshuf Root CA** on first app launch. Install and trust it in your macOS login keychain to decrypt TLS connections.
+Inspect encrypted HTTPS traffic with native SSL/TLS decryption. Yanshuf generates a **Yanshuf Root CA** on first app launch and installs it as a trusted root in your macOS login keychain to decrypt TLS connections.
 
 1. Follow the **setup guide** on first launch (or open **Settings → Certificate** later).
-2. Click **Install Certificate**.
-3. Click **Open Keychain Access**, select the **login** keychain, then set **Yanshuf Root CA** to **Always Trust**.
+2. Click **Install & Trust Certificate**.
+3. Enter your **macOS password** at the prompt. Yanshuf installs the CA into your login keychain and marks it trusted in one step — no manual Keychain Access step required.
 
 Capture and system proxy are blocked until the certificate is trusted.
 

@@ -51,7 +51,7 @@ export interface YanshufAPI {
   cert: {
     status: () => Promise<CertStatus>;
     export: () => Promise<string>;
-    install: () => Promise<{ alreadyInstalled: boolean; needsManualTrust: boolean }>;
+    install: () => Promise<{ alreadyTrusted: boolean; trusted: boolean }>;
     openKeychain: () => Promise<void>;
     verify: () => Promise<{ trusted: boolean; error?: string }>;
     uninstall: () => Promise<void>;

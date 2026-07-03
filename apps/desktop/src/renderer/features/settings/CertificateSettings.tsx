@@ -34,7 +34,7 @@ function trustBadgeVariant(trusted: CertStatus['trusted']) {
 
 function trustLabel(trusted: CertStatus['trusted']) {
   if (trusted === 'installed') return 'Trusted';
-  if (trusted === 'untrusted') return 'Needs Always Trust';
+  if (trusted === 'untrusted') return 'Not trusted';
   return 'Not installed';
 }
 
@@ -234,7 +234,7 @@ export function CertificateSettings({
       {trusted !== 'installed' && (
         <SettingsAlert variant="warning">
           {trusted === 'untrusted'
-            ? 'Certificate is installed but not fully trusted. Open Keychain Access and set Always Trust for SSL.'
+            ? 'Certificate is installed but not trusted. Click Set up and enter your password at the prompt to trust it.'
             : 'Install and trust the root CA to decrypt HTTPS traffic.'}
         </SettingsAlert>
       )}
@@ -243,7 +243,7 @@ export function CertificateSettings({
         <div className="divide-y divide-destructive/10">
           <DangerActionRow
             title="Remove from Keychain"
-            description="Deletes the root CA from your login keychain. HTTPS decryption stops until you reinstall."
+            description="Deletes the trusted root CA from your login keychain. HTTPS decryption stops until you reinstall."
             actionLabel="Remove"
             disabled={busy}
             onAction={() => setConfirmAction('uninstall')}
