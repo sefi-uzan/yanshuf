@@ -282,6 +282,7 @@ export const IPC_CHANNELS = {
   APP_NOTIFY: 'app:notify',
   APP_GET_VERSION: 'app:get-version',
   APP_CHECK_FOR_UPDATES: 'app:check-for-updates',
+  APP_INSTALL_UPDATE: 'app:install-update',
   APP_OPEN_EXTERNAL: 'app:open-external',
 } as const;
 
@@ -290,8 +291,12 @@ export type UpdateCheckResult = {
   latest: string | null;
   updateAvailable: boolean;
   releaseUrl: string | null;
+  readyToInstall?: boolean;
+  downloading?: boolean;
   error?: string;
 };
+
+export type AppNotifyAction = 'install-update';
 
 export type AppNotifyPayload = {
   title: string;
@@ -299,6 +304,8 @@ export type AppNotifyPayload = {
   variant?: 'error' | 'success' | 'info';
   externalUrl?: string;
   externalLabel?: string;
+  action?: AppNotifyAction;
+  actionLabel?: string;
 };
 
 export type MenuAction =

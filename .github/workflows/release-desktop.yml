@@ -83,8 +83,9 @@ jobs:
           set -eo pipefail
           APP=$(find apps/desktop/out -maxdepth 2 -name 'Yanshuf.app' -print -quit)
           DMG=$(find apps/desktop/out/make -name '*.dmg' -print -quit)
-          if [ -z "$APP" ] || [ -z "$DMG" ]; then
-            echo "Could not locate the packaged app or DMG"
+          ZIP=$(find apps/desktop/out/make -name '*.zip' -print -quit)
+          if [ -z "$APP" ] || [ -z "$DMG" ] || [ -z "$ZIP" ]; then
+            echo "Could not locate the packaged app, DMG, or ZIP"
             exit 1
           fi
           codesign --verify --deep --strict --verbose=2 "$APP"

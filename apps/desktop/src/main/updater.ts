@@ -1,129 +1,198 @@
-import { app, shell } from 'electron';
+import { app, autoUpdater, shell } from 'electron';
 import type { UpdateCheckResult } from '@yanshuf/shared';
 import { notifyRenderer } from './notify-renderer';
-import { isNewerVersion } from './updater-version';
+import { parseUpdateCheckInterval } from './updater-interval';
 
 export { isNewerVersion } from './updater-version';
 
 const GITHUB_REPO = 'sefi-uzan/yanshuf';
-const CHECK_INTERVAL_MS = 60 * 60 * 1000;
-
-type GitHubRelease = {
-  tag_name: string;
-  html_url: string;
-  draft: boolean;
-  prerelease: boolean;
-};
+const DEFAULT_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const MANUAL_CHECK_TIMEOUT_MS = 5 * 60 * 1000;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
-let lastNotifiedVersion: string | null = null;
+let listenersAttached = false;
+let manualCheckPending: ((result: UpdateCheckResult) => void) | null = null;
+let manualCheckTimeout: ReturnType<typeof setTimeout> | null = null;
+let isManualCheck = false;
+let downloadedUpdate: { version: string } | null = null;
+let downloading = false;
 
-function normalizeTag(tagName: string): string {
-  return tagName.replace(/^v/i, '');
+function getFeedUrl(): string {
+  return `https://update.electronjs.org/${GITHUB_REPO}/${process.platform}/${app.getVersion()}`;
 }
 
-async function fetchLatestRelease(): Promise<{ version: string; url: string } | null> {
-  const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Yanshuf' },
-  });
+function parseReleaseVersion(releaseName: string): string {
+  const match = /v?(\d+\.\d+\.\d+)/.exec(releaseName);
+  return match ? match[1]! : releaseName;
+}
 
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`GitHub API error (${response.status})`);
-  }
-
-  const release = (await response.json()) as GitHubRelease;
-  if (release.draft) return null;
-
+function currentResult(overrides: Partial<UpdateCheckResult> = {}): UpdateCheckResult {
   return {
-    version: normalizeTag(release.tag_name),
-    url: release.html_url,
+    current: app.getVersion(),
+    latest: null,
+    updateAvailable: false,
+    releaseUrl: null,
+    ...overrides,
   };
 }
 
-function notifyUpdateAvailable(version: string, releaseUrl: string): void {
-  if (lastNotifiedVersion === version) return;
-  lastNotifiedVersion = version;
+function clearManualCheckTimeout(): void {
+  if (manualCheckTimeout !== null) {
+    clearTimeout(manualCheckTimeout);
+    manualCheckTimeout = null;
+  }
+}
 
+function finishManualCheck(result: UpdateCheckResult): void {
+  clearManualCheckTimeout();
+  const resolve = manualCheckPending;
+  manualCheckPending = null;
+  isManualCheck = false;
+  resolve?.(result);
+}
+
+function notifyUpdateReady(version: string): void {
   notifyRenderer({
-    title: `Yanshuf v${version} is available`,
-    description: 'Download the latest release from GitHub.',
+    title: `Yanshuf v${version} is ready`,
+    description: 'Restart to finish updating.',
     variant: 'info',
-    externalUrl: releaseUrl,
-    externalLabel: 'Download',
+    action: 'install-update',
+    actionLabel: 'Restart & update',
   });
 }
 
-export async function checkForUpdates(options?: { notify?: boolean }): Promise<UpdateCheckResult> {
-  const current = app.getVersion();
+function attachAutoUpdaterListeners(): void {
+  if (listenersAttached) return;
+  listenersAttached = true;
 
-  try {
-    const latestRelease = await fetchLatestRelease();
-    if (!latestRelease) {
-      return { current, latest: null, updateAvailable: false, releaseUrl: null };
+  autoUpdater.on('update-available', () => {
+    downloading = true;
+    if (isManualCheck) {
+      notifyRenderer({
+        title: 'Downloading update…',
+        description: 'The update will install after you restart.',
+        variant: 'info',
+      });
     }
+  });
 
-    const updateAvailable = isNewerVersion(latestRelease.version, current);
-    if (updateAvailable && options?.notify !== false) {
-      notifyUpdateAvailable(latestRelease.version, latestRelease.url);
+  autoUpdater.on('update-not-available', () => {
+    downloading = false;
+    if (manualCheckPending) {
+      finishManualCheck(currentResult());
     }
+  });
 
-    return {
-      current,
-      latest: latestRelease.version,
-      updateAvailable,
-      releaseUrl: latestRelease.url,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      current,
-      latest: null,
-      updateAvailable: false,
-      releaseUrl: null,
-      error: message,
-    };
-  }
+  autoUpdater.on('update-downloaded', (_event, _releaseNotes, releaseName) => {
+    const version = parseReleaseVersion(releaseName);
+    downloadedUpdate = { version };
+    downloading = false;
+    notifyUpdateReady(version);
+
+    if (manualCheckPending) {
+      finishManualCheck(
+        currentResult({
+          latest: version,
+          updateAvailable: true,
+          readyToInstall: true,
+        }),
+      );
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    downloading = false;
+    const message = error.message;
+    if (manualCheckPending) {
+      finishManualCheck(currentResult({ error: message }));
+    } else {
+      notifyRenderer({
+        title: 'Could not check for updates',
+        description: message,
+        variant: 'error',
+      });
+    }
+  });
+}
+
+function configureAutoUpdater(): void {
+  if (!app.isPackaged || listenersAttached) return;
+  attachAutoUpdaterListeners();
+  autoUpdater.setFeedURL({ url: getFeedUrl() });
+}
+
+export function installUpdate(): void {
+  autoUpdater.quitAndInstall();
 }
 
 export async function checkForUpdatesManual(): Promise<UpdateCheckResult> {
-  const result = await checkForUpdates({ notify: false });
-
-  if (result.error) {
-    notifyRenderer({
-      title: 'Could not check for updates',
-      description: result.error,
-      variant: 'error',
-    });
-    return result;
+  if (!app.isPackaged) {
+    return currentResult();
   }
 
-  if (result.updateAvailable && result.latest && result.releaseUrl) {
+  configureAutoUpdater();
+
+  if (downloadedUpdate) {
+    notifyUpdateReady(downloadedUpdate.version);
+    return currentResult({
+      latest: downloadedUpdate.version,
+      updateAvailable: true,
+      readyToInstall: true,
+    });
+  }
+
+  if (downloading) {
     notifyRenderer({
-      title: `Yanshuf v${result.latest} is available`,
-      description: `You are on v${result.current}.`,
+      title: 'Downloading update…',
+      description: 'The update will install after you restart.',
       variant: 'info',
-      externalUrl: result.releaseUrl,
-      externalLabel: 'Download',
     });
-    return result;
+    return currentResult({ updateAvailable: true, downloading: true });
   }
 
-  notifyRenderer({
-    title: 'You are up to date',
-    description: `Yanshuf v${result.current}`,
-    variant: 'success',
+  isManualCheck = true;
+
+  return new Promise<UpdateCheckResult>((resolve) => {
+    manualCheckPending = resolve;
+    manualCheckTimeout = setTimeout(() => {
+      if (!manualCheckPending) return;
+      finishManualCheck(currentResult({ error: 'Update check timed out' }));
+    }, MANUAL_CHECK_TIMEOUT_MS);
+
+    autoUpdater.checkForUpdates();
+  }).then((result) => {
+    if (result.error) {
+      notifyRenderer({
+        title: 'Could not check for updates',
+        description: result.error,
+        variant: 'error',
+      });
+      return result;
+    }
+
+    if (!result.updateAvailable) {
+      notifyRenderer({
+        title: 'You are up to date',
+        description: `Yanshuf v${result.current}`,
+        variant: 'success',
+      });
+    }
+
+    return result;
   });
-  return result;
 }
 
 export function startUpdateChecks(): void {
   if (!app.isPackaged || intervalId !== null) return;
 
-  void checkForUpdates();
+  configureAutoUpdater();
+
+  const intervalMs = parseUpdateCheckInterval(process.argv) ?? DEFAULT_CHECK_INTERVAL_MS;
+
+  autoUpdater.checkForUpdates();
   intervalId = setInterval(() => {
-    void checkForUpdates();
-  }, CHECK_INTERVAL_MS);
+    autoUpdater.checkForUpdates();
+  }, intervalMs);
 }
 
 export function openExternalUrl(url: string): void {

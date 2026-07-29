@@ -59,6 +59,7 @@ import {
 } from './mcp-api/integration-registry';
 import {
   checkForUpdatesManual,
+  installUpdate,
   openExternalUrl,
   startUpdateChecks,
 } from './updater';
@@ -755,6 +756,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion());
 
   ipcMain.handle(IPC_CHANNELS.APP_CHECK_FOR_UPDATES, () => checkForUpdatesManual());
+
+  ipcMain.handle(IPC_CHANNELS.APP_INSTALL_UPDATE, () => {
+    installUpdate();
+  });
 
   ipcMain.handle(IPC_CHANNELS.APP_OPEN_EXTERNAL, (_e, url: string) => {
     openExternalUrl(url);

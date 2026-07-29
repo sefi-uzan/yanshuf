@@ -1,6 +1,6 @@
 # Releasing Yanshuf Desktop
 
-Yanshuf publishes signed, notarized macOS DMGs to [GitHub Releases](https://github.com/sefi-uzan/yanshuf/releases). The running app checks for newer versions in the background and from **Settings → General → Check for updates**.
+Yanshuf publishes signed, notarized macOS DMGs and ZIPs to [GitHub Releases](https://github.com/sefi-uzan/yanshuf/releases). DMGs are for first-time install; ZIPs power in-app updates. The running app checks for newer versions in the background and from **Settings → General → Check for updates**.
 
 Both the `.app` and the `.dmg` are notarized and stapled. Gatekeeper assesses the disk image a user downloads, not only the app inside it, so notarizing just the app is not enough.
 
@@ -109,6 +109,24 @@ Installed apps pick up the new version on the next background check (hourly) or 
 ## Update behavior
 
 - Background check runs every hour in packaged builds.
-- When a newer semver is on GitHub Releases, the app shows a toast with a **Download** action that opens the release page.
-- Users download the DMG and replace the app in `/Applications` manually.
-- Signed and notarized builds open normally after download, with no `xattr` workaround.
+- When a newer semver is on GitHub Releases, the app downloads the signed ZIP in the background.
+- When the download finishes, a toast appears with **Restart & update**. Clicking it quits and relaunches into the new version.
+- **Check for updates** in Settings triggers the same flow immediately and shows whether you are up to date, downloading, ready to restart, or hit an error.
+- DMGs remain available on GitHub for manual first-time installs or recovery.
+- Existing installs that only open the release page need one manual DMG upgrade to a build that includes in-app updates and a release that includes ZIP assets. After that, updates stay in-app.
+
+### Testing update checks
+
+Override the background interval when launching a packaged build:
+
+```bash
+/Applications/Yanshuf.app/Contents/MacOS/Yanshuf --update-check-interval=30
+```
+
+Or:
+
+```bash
+open -a Yanshuf --args --update-check-interval=30
+```
+
+Invalid or missing values fall back to the default one-hour interval. Settings **Check for updates** is still the fastest one-shot test.

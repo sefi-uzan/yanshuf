@@ -1,5 +1,6 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerDMG } from '@electron-forge/maker-dmg';
+import { MakerZIP } from '@electron-forge/maker-zip';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -65,7 +66,7 @@ const config: ForgeConfig = {
       return makeResults;
     },
   },
-  makers: [new MakerDMG(dmgConfig, ['darwin'])],
+  makers: [new MakerDMG(dmgConfig, ['darwin']), new MakerZIP({}, ['darwin'])],
   publishers: [
     {
       name: '@electron-forge/publisher-github',
