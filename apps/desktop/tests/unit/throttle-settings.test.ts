@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergeThrottleSettings, resolveThrottleSettings, THROTTLE_PRESET_VALUES } from '@yanshuf/shared';
-import { DEFAULT_THROTTLE } from '@yanshuf/shared';
+import {
+  DEFAULT_THROTTLE,
+  mergeThrottleSettings,
+  resolveThrottleSettings,
+  THROTTLE_PRESET_VALUES,
+} from '@yanshuf/shared';
 
 describe('throttle settings', () => {
   it('resolves preset values', () => {

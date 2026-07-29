@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { copyMcpBundle, packagedResourcesDir } from '../../scripts/copy-mcp-bundle';
+import { copyMcpBundle, stagedResourcesDir } from '../../scripts/copy-mcp-bundle';
 
 const tempDirs: string[] = [];
 
@@ -13,16 +13,9 @@ afterEach(() => {
 });
 
 describe('copy-mcp-bundle', () => {
-  it('maps a macOS app bundle to Contents/Resources', () => {
-    expect(packagedResourcesDir('/tmp/Yanshuf.app')).toBe('/tmp/Yanshuf.app/Contents/Resources');
-  });
-
-  it('finds .app inside an electron-forge output directory', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yanshuf-out-'));
-    tempDirs.push(root);
-    fs.mkdirSync(path.join(root, 'Yanshuf.app', 'Contents', 'Resources'), { recursive: true });
-    expect(packagedResourcesDir(root)).toBe(
-      path.join(root, 'Yanshuf.app', 'Contents', 'Resources'),
+  it('maps the packager afterCopy build path to Contents/Resources', () => {
+    expect(stagedResourcesDir('/tmp/staging/Electron.app/Contents/Resources/app')).toBe(
+      '/tmp/staging/Electron.app/Contents/Resources',
     );
   });
 

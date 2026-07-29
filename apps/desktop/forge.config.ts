@@ -6,14 +6,16 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
 import { copyMainExternals } from './scripts/copy-main-externals';
-import { copyMcpBundle, packagedResourcesDir } from './scripts/copy-mcp-bundle';
+import { copyMcpBundle, stagedResourcesDir } from './scripts/copy-mcp-bundle';
+import { notarizeAndStapleDmg, notarizeCredentialsFromEnv } from './scripts/notarize-dmg';
 
 const entitlementsPath = path.resolve(__dirname, 'entitlements.plist');
+const signingIdentity = process.env.APPLE_SIGNING_IDENTITY;
 
-const signingConfig = process.env.APPLE_SIGNING_IDENTITY
+const signingConfig = signingIdentity
   ? {
       osxSign: {
-        identity: process.env.APPLE_SIGNING_IDENTITY,
+        identity: signingIdentity,
         hardenedRuntime: true,
         entitlements: entitlementsPath,
         'entitlements-inherit': entitlementsPath,
@@ -24,6 +26,10 @@ const signingConfig = process.env.APPLE_SIGNING_IDENTITY
         teamId: process.env.APPLE_TEAM_ID!,
       },
     }
+  : {};
+
+const dmgConfig = signingIdentity
+  ? { additionalDMGOptions: { 'code-sign': { 'signing-identity': signingIdentity } } }
   : {};
 
 const config: ForgeConfig = {
@@ -37,17 +43,29 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
-    async packageAfterCopy(_forgeConfig, buildPath) {
+    async packageAfterCopy(_forgeConfig, buildPath, _electronVersion, platform) {
       copyMainExternals(buildPath, __dirname);
-    },
-    async postPackage(_forgeConfig, { outputPaths, platform }) {
       if (platform !== 'darwin') return;
-      for (const outputPath of outputPaths) {
-        copyMcpBundle(packagedResourcesDir(outputPath), __dirname);
+      // Anything written into Contents/Resources after @electron/packager signs the
+      // bundle breaks the sealed resource manifest, so stage the bundle here instead of
+      // in a post-package hook.
+      copyMcpBundle(stagedResourcesDir(buildPath), __dirname);
+    },
+    async postMake(_forgeConfig, makeResults) {
+      const credentials = notarizeCredentialsFromEnv();
+      if (!signingIdentity || !credentials) return makeResults;
+
+      for (const result of makeResults) {
+        if (result.platform !== 'darwin') continue;
+        for (const artifact of result.artifacts.filter((file) => file.endsWith('.dmg'))) {
+          await notarizeAndStapleDmg(artifact, credentials);
+        }
       }
+
+      return makeResults;
     },
   },
-  makers: [new MakerDMG({}, ['darwin'])],
+  makers: [new MakerDMG(dmgConfig, ['darwin'])],
   publishers: [
     {
       name: '@electron-forge/publisher-github',
@@ -56,6 +74,10 @@ const config: ForgeConfig = {
           owner: 'sefi-uzan',
           name: 'yanshuf',
         },
+        // Kept as a draft so the release workflow can attach every architecture before
+        // the updater, which reads /releases/latest, is able to see the release.
+        draft: true,
+        generateReleaseNotes: true,
       },
     },
   ],

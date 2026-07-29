@@ -27,8 +27,11 @@ function resolvePackageDir(nodeModulesRoot: string, packageName: string): string
 
 function findNodeModulesRoot(projectRoot: string, probePackage = 'http-mitm-proxy'): string {
   let current = projectRoot;
+  let previous = '';
   let fallback = path.join(projectRoot, 'node_modules');
-  while (true) {
+
+  // path.dirname stops changing at the filesystem root, which ends the walk.
+  while (current !== previous) {
     const candidate = path.join(current, 'node_modules');
     if (fs.existsSync(path.join(candidate, probePackage))) {
       return candidate;
@@ -36,10 +39,10 @@ function findNodeModulesRoot(projectRoot: string, probePackage = 'http-mitm-prox
     if (fs.existsSync(candidate)) {
       fallback = candidate;
     }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
+    previous = current;
+    current = path.dirname(current);
   }
+
   return fallback;
 }
 

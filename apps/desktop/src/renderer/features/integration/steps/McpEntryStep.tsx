@@ -1,8 +1,11 @@
 import { Button } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 import { Loader2 } from 'lucide-react';
-import type { IntegrationStepResult } from '@yanshuf/shared';
-import { CLIENT_LABEL, type IntegrationClient } from '@yanshuf/shared';
+import {
+  CLIENT_LABEL,
+  type IntegrationClient,
+  type IntegrationStepResult,
+} from '@yanshuf/shared';
 
 interface McpEntryStepProps {
   client: IntegrationClient;

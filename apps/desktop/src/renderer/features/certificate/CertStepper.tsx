@@ -1,12 +1,7 @@
 import { Fragment } from 'react';
 import { Check, CheckCircle2, AlertCircle, Circle } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
-import {
-  CERT_FLOW_STEPS,
-  getCertFlowStep,
-  isCertFlowStepComplete,
-  type CertFlowStep,
-} from './cert-flow';
+import { CERT_FLOW_STEPS, getCertFlowStep, isCertFlowStepComplete } from './cert-flow';
 import type { CertStatus } from '@yanshuf/shared';
 
 type CertStepperVariant = 'stepper' | 'inline';

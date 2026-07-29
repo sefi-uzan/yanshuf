@@ -7,10 +7,13 @@ import type {
   CaptureFilterApplyAction,
   ComposedEntry,
   ComposerRequest,
+  IntegrationUninstallPayload,
+  IntegrationVerifyParams,
   InterceptModifications,
   InterceptRule,
   MapRemoteRule,
   MenuAction,
+  SkillInstallTarget,
   ThrottleSetPatch,
 } from '@yanshuf/shared';
 import {
@@ -30,14 +33,14 @@ import { InterceptEngine } from './intercept/engine';
 import { MapRemoteEngine } from './map-remote/engine';
 import { bindNotifyWindow, notifyRenderer } from './notify-renderer';
 import { CertificateManager } from './cert/manager';
-import { assertCertTrusted, rethrowCertIpcError } from './cert/cert-gate';
+import { rethrowCertIpcError } from './cert/cert-gate';
 import { ComposerService, parseCurl } from './composer/service';
 import { CaptureStore } from './proxy/capture-store';
 import { ProxyServer } from './proxy/server';
 import { ThrottleController, toThrottleConfig } from './proxy/throttle';
 import { JsonFileStore } from './storage/json-store';
 import { SystemProxyManager } from './system-proxy/macos';
-import { ensureMcpAuth, getMcpDataDir } from './mcp-api/auth';
+import { ensureMcpAuth } from './mcp-api/auth';
 import { createMcpHandlers } from './mcp-api/create-handlers';
 import { McpApiServer } from './mcp-api/server';
 import { McpWaitQueue } from './mcp-api/wait-queue';
@@ -54,7 +57,6 @@ import {
   createIntegrationRegistry,
   type IntegrationRegistryService,
 } from './mcp-api/integration-registry';
-import type { IntegrationUninstallPayload, IntegrationVerifyParams, SkillInstallTarget } from '@yanshuf/shared';
 import {
   checkForUpdatesManual,
   openExternalUrl,

@@ -21,12 +21,12 @@ import {
   extractRequestInfo,
   type PendingCapture,
 } from './capture-store';
-import type { CaptureEntry } from '@yanshuf/shared';
-import { headersToRecord ,
+import type { CaptureEntry, InterceptRule } from '@yanshuf/shared';
+import {
+  headersToRecord,
   isComposerCaptureHeader,
   stripComposerCaptureHeader,
 } from '@yanshuf/shared';
-import type { InterceptRule } from '@yanshuf/shared';
 import { installProxyConsoleFilter, isBenignProxyError, isExpectedUpstreamError, formatUpstreamError, uninstallProxyConsoleFilter } from './console-filter';
 import type { ThrottleController } from './throttle';
 

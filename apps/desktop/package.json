@@ -10,7 +10,7 @@
     "package": "pnpm --filter @yanshuf/mcp build && electron-forge package",
     "make": "pnpm --filter @yanshuf/mcp build && electron-forge make",
     "icons": "bash scripts/build-icons.sh",
-    "publish": "pnpm --filter @yanshuf/mcp build && electron-forge publish",
+    "release": "pnpm --filter @yanshuf/mcp build && electron-forge publish",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",

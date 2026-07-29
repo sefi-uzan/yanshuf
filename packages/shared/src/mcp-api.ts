@@ -4,12 +4,11 @@ import type {
   CaptureEntrySummary,
   ComposerRequest,
   ComposerResponse,
-  InterceptModifications,
   InterceptRule,
   MapRemoteRule,
+  ThrottleSetPatch,
   ThrottleSettings,
 } from './types';
-import type { ThrottleSetPatch } from './types';
 
 export const MCP_DEFAULT_PORT = 9473;
 export const MCP_CAPTURE_SEARCH_MAX_LIMIT = 100;

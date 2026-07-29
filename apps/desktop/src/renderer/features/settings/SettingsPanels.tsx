@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { CaptureFilterMode, CertStatus, ThrottlePreset } from '@yanshuf/shared';
+import type {
+  CaptureFilterMode,
+  CertStatus,
+  IntegrationClient,
+  ThrottlePreset,
+} from '@yanshuf/shared';
 import { DEFAULT_SETTINGS } from '@yanshuf/shared';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
 import { useShortcutHints } from '@/components/shortcut-hints';
@@ -11,7 +16,6 @@ import { GeneralSettings } from './GeneralSettings';
 import { GeneralSettingsFooter } from './GeneralSettingsFooter';
 import { IntegrationOnboarding } from '../integration/IntegrationOnboarding';
 import { clearCapturedRequests, notifyActionFailed, notifySaved } from '@/lib/toast-actions';
-import type { IntegrationClient } from '@yanshuf/shared';
 
 export type SettingsTab = 'general' | 'certificate' | 'ai';
 

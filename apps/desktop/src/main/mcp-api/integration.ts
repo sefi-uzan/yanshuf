@@ -286,10 +286,7 @@ export async function installMcpEntry(client: IntegrationClient): Promise<Integr
   return { ok: true, message: 'Added yanshuf MCP server to Claude Code.', path: configPath };
 }
 
-export async function updateMcpEntryPath(
-  client: IntegrationClient,
-  mcpEntry: string,
-): Promise<IntegrationStepResult> {
+export async function updateMcpEntryPath(client: IntegrationClient): Promise<IntegrationStepResult> {
   return installMcpEntry(client);
 }
 
@@ -361,10 +358,7 @@ export async function installSessionEndHook(client: IntegrationClient): Promise<
   return { ok: true, message: 'Added SessionEnd hook to Claude Code.', path: configPath };
 }
 
-export async function updateHookPath(
-  client: IntegrationClient,
-  cleanupSessionScript: string,
-): Promise<IntegrationStepResult> {
+export async function updateHookPath(client: IntegrationClient): Promise<IntegrationStepResult> {
   return installSessionEndHook(client);
 }
 

@@ -1,8 +1,11 @@
 import { Button } from '@yanshuf/ui';
 import { Loader2, Check, X, AlertCircle } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
-import type { IntegrationVerifyResult } from '@yanshuf/shared';
-import { CLIENT_LABEL, type IntegrationClient } from '@yanshuf/shared';
+import {
+  CLIENT_LABEL,
+  type IntegrationClient,
+  type IntegrationVerifyResult,
+} from '@yanshuf/shared';
 
 interface VerifyStepProps {
   client: IntegrationClient;

@@ -270,8 +270,8 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       if (!skill) continue;
 
       const paths = getClientConfigPaths(clientRecord.client);
-      await updateMcpEntryPath(clientRecord.client, paths.mcpEntry);
-      await updateHookPath(clientRecord.client, paths.cleanupSessionScript);
+      await updateMcpEntryPath(clientRecord.client);
+      await updateHookPath(clientRecord.client);
 
       const target: SkillInstallTarget =
         skill.kind === 'personal'
@@ -317,9 +317,8 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       const clientRecord = registry.clients.find((c) => c.skills.some((s) => s.id === skillId));
       if (clientRecord && !clientsSeen.has(clientRecord.client)) {
         clientsSeen.add(clientRecord.client);
-        const paths = getClientConfigPaths(clientRecord.client);
-        await updateMcpEntryPath(clientRecord.client, paths.mcpEntry);
-        await updateHookPath(clientRecord.client, paths.cleanupSessionScript);
+        await updateMcpEntryPath(clientRecord.client);
+        await updateHookPath(clientRecord.client);
       }
       const result = await updateInstallRecord(skillId);
       results.push({ id: skillId, ...result });

@@ -1,5 +1,4 @@
-import type { CaptureEntrySummary, BreakpointSnapshot } from '@yanshuf/shared';
-import type { CaptureWaitParams } from '@yanshuf/shared';
+import type { CaptureEntrySummary, BreakpointSnapshot, CaptureWaitParams } from '@yanshuf/shared';
 import { MCP_WAIT_DEFAULT_TIMEOUT_MS, MCP_WAIT_MAX_TIMEOUT_MS, searchCaptures } from '@yanshuf/shared';
 
 type CaptureWaiter = {

@@ -1,20 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** Resolve Contents/Resources for an electron-forge output path (dir or .app). */
-export function packagedResourcesDir(outputPath: string): string {
-  if (outputPath.endsWith('.app')) {
-    return path.join(outputPath, 'Contents', 'Resources');
-  }
-
-  const appBundle = fs
-    .readdirSync(outputPath, { withFileTypes: true })
-    .find((entry) => entry.isDirectory() && entry.name.endsWith('.app'));
-  if (appBundle) {
-    return path.join(outputPath, appBundle.name, 'Contents', 'Resources');
-  }
-
-  return path.join(outputPath, 'Contents', 'Resources');
+/**
+ * Resolve Contents/Resources from the `buildPath` that @electron/packager hands to its
+ * afterCopy hook, which points at Contents/Resources/app.
+ */
+export function stagedResourcesDir(appBuildPath: string): string {
+  return path.resolve(appBuildPath, '..');
 }
 
 /**
