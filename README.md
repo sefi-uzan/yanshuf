@@ -75,6 +75,8 @@ pnpm start
 | Command | Description |
 |---------|-------------|
 | `pnpm start` | Run the Electron desktop app in development |
+| `pnpm --filter @yanshuf/web dev` | Run the marketing site locally (port 3000) |
+| `pnpm --filter @yanshuf/web build` | Build the marketing site for production |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm lint` | Lint all packages |
 | `pnpm test` | Run unit tests |
@@ -85,6 +87,7 @@ Run a task for a single package:
 
 ```bash
 pnpm --filter @yanshuf/desktop start
+pnpm --filter @yanshuf/web dev
 pnpm --filter @yanshuf/mcp build
 pnpm --filter @yanshuf/shared test
 ```
@@ -94,7 +97,8 @@ pnpm --filter @yanshuf/shared test
 ```
 apps/
 ├── desktop/     # @yanshuf/desktop — Electron app
-└── mcp/           # @yanshuf/mcp — MCP server for AI tool integration
+├── mcp/         # @yanshuf/mcp — MCP server for AI tool integration
+└── web/         # @yanshuf/web — marketing site (Next.js)
 
 packages/
 ├── shared/      # @yanshuf/shared — types, IPC, utilities

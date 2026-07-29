@@ -5,7 +5,9 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./lib/utils": "./src/lib/utils.ts"
+    "./lib/utils": "./src/lib/utils.ts",
+    "./button": "./src/components/button.tsx",
+    "./badge": "./src/components/badge.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
