@@ -1,22 +1,41 @@
 # Yanshuf
 
-Yanshuf is a macOS Electron application that sits between your computer and the network, intercepting HTTP and HTTPS traffic so you can inspect, modify, and replay it.
+Yanshuf is an open-source macOS desktop app for intercepting HTTP and HTTPS traffic. Route your system or app traffic through it to inspect, modify, replay, and automate requests in real time.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
+
+## Install
+
+Pre-built releases are published on [GitHub Releases](https://github.com/sefi-uzan/yanshuf/releases).
+
+### Requirements
+
+- macOS 13 or later
+- Apple Silicon (arm64) or Intel (x64)
+
+### First-time install
+
+1. Download the `.dmg` for your Mac's architecture from the latest release.
+2. Open the DMG and drag **Yanshuf** to `/Applications`.
+3. Launch Yanshuf. On first run, follow the setup guide to install and trust the **Yanshuf Root CA** so HTTPS traffic can be decrypted.
+4. Enable capture when you're ready to inspect traffic.
+
+Official releases are signed and notarized, so Gatekeeper should accept them without extra steps.
+
+### Updates
+
+Installed apps check for updates in the background and from **Settings → General → Check for updates**. When a newer version is available, Yanshuf downloads it and prompts you to **Restart & update**.
 
 ## Features
 
-### Network Proxy
+### Network proxy
 
-Route your system or application traffic through Yanshuf to capture every request and response in real time. Browse headers, bodies, status codes, and timing in a three-pane inspector.
+Route system or application traffic through Yanshuf and browse headers, bodies, status codes, and timing in a three-pane inspector.
 
-### SSL Decryption
+### SSL decryption
 
-Inspect encrypted HTTPS traffic with native SSL/TLS decryption. Yanshuf generates a **Yanshuf Root CA** on first app launch and installs it as a trusted root in your macOS login keychain to decrypt TLS connections.
-
-1. Follow the **setup guide** on first launch (or open **Settings → Certificate** later).
-2. Click **Install & Trust Certificate**.
-3. Enter your **macOS password** at the prompt. Yanshuf installs the CA into your login keychain and marks it trusted in one step — no manual Keychain Access step required.
-
-Capture and system proxy are blocked until the certificate is trusted.
+Yanshuf generates a local root CA on first launch. Install it from the setup guide or **Settings → Certificate** to decrypt HTTPS. Capture and the system proxy stay disabled until the certificate is trusted.
 
 ### Auto Responder
 
@@ -26,33 +45,25 @@ Define ordered regex rules that return custom responses (inline body, local file
 
 Build HTTP requests, import/export cURL, and keep a send history of recent requests.
 
+### MCP integration
+
+Connect Yanshuf to AI coding tools (Cursor, Claude Code, and similar) via the bundled MCP server. Use **Settings → AI Integration** to install the server and skills into your editor.
+
 ## Development
 
-This repository is a **pnpm + Turborepo monorepo**.
-
-```
-apps/
-├── desktop/       # @yanshuf/desktop — Electron app
-├── mcp/             # @yanshuf/mcp — MCP server for Cursor / Claude Code
-└── web/             # (planned) Next.js landing site
-
-packages/
-├── shared/        # @yanshuf/shared — types, IPC, utilities
-├── ui/            # @yanshuf/ui — shadcn/ui components
-├── typescript-config/
-├── eslint-config/
-└── tailwind-config/
-```
+This repository is a **pnpm + Turborepo** monorepo.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+ (matches CI)
 - pnpm 10+ (`corepack enable` or `npm install -g pnpm`)
 - macOS (system proxy integration is macOS-only)
 
-### Setup
+### Getting started
 
 ```bash
+git clone https://github.com/sefi-uzan/yanshuf.git
+cd yanshuf
 pnpm install
 pnpm start
 ```
@@ -61,12 +72,12 @@ pnpm start
 
 | Command | Description |
 |---------|-------------|
-| `pnpm start` | Run Electron desktop app in development mode |
+| `pnpm start` | Run the Electron desktop app in development |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm lint` | Lint all packages |
-| `pnpm test` | Run unit tests (Vitest) |
+| `pnpm test` | Run unit tests |
 | `pnpm test:e2e` | Run Playwright E2E tests (desktop) |
-| `pnpm make` | Build a distributable `.dmg` (desktop) |
+| `pnpm make` | Build a local `.dmg` (desktop) |
 
 Run a task for a single package:
 
@@ -76,53 +87,82 @@ pnpm --filter @yanshuf/mcp build
 pnpm --filter @yanshuf/shared test
 ```
 
-### Desktop app structure
+### Project structure
+
+```
+apps/
+├── desktop/     # @yanshuf/desktop — Electron app
+└── mcp/           # @yanshuf/mcp — MCP server for AI tool integration
+
+packages/
+├── shared/      # @yanshuf/shared — types, IPC, utilities
+├── ui/            # @yanshuf/ui — shared UI components
+├── typescript-config/
+├── eslint-config/
+└── tailwind-config/
+```
+
+Desktop app layout:
 
 ```
 apps/desktop/src/
 ├── main/          # Electron main process (proxy, IPC, storage)
 ├── preload/       # contextBridge API
-└── renderer/      # React UI (features, app components)
+└── renderer/      # React UI
 ```
 
-## Packaging & code signing
-
-Build a local `.dmg`:
+## Building locally
 
 ```bash
 pnpm make
 ```
 
-The `.dmg` is produced in `out/make/`. It targets **Apple Silicon (arm64)** only — it will not run on Intel Macs.
+The `.dmg` is written to `apps/desktop/out/make/`.
 
-### Sharing the unsigned build with others
+Local builds are **unsigned**. macOS Gatekeeper may block them on your machine or others'. After copying to `/Applications`, open once via **Right-click → Open**, or clear the quarantine attribute:
 
-The build is **not code-signed or notarized**, so macOS Gatekeeper will block it on another machine ("Yanshuf is damaged" or "unidentified developer"). After copying the app to `/Applications`, the recipient can open it one of two ways:
+```bash
+xattr -cr /Applications/Yanshuf.app
+```
 
-- **Right-click → Open** (then confirm in the dialog), or
-- Clear the quarantine attribute from Terminal:
+> Yanshuf changes your macOS system proxy while capturing. If the app is force-quit or crashes, reopen it (it restores the proxy on launch) or turn the proxy off under **System Settings → Network → … → Proxies**.
 
-  ```bash
-  xattr -cr /Applications/Yanshuf.app
-  ```
+## Releasing
 
-This only needs to be done once per machine.
+Official releases are cut from git tags and built in GitHub Actions. See [docs/RELEASE.md](docs/RELEASE.md) for Apple signing, notarization, GitHub secrets, and the release workflow.
 
-> Heads up: Yanshuf changes your macOS system proxy while capturing. If the app is force-quit or crashes, re-open it (it restores the proxy on launch) or turn the proxy off under **System Settings → Network → … → Proxies**.
+## Forking
 
-For signed distribution outside your machine:
+You're welcome to fork Yanshuf and ship your own build. Before publishing releases or enabling in-app updates, update project-specific identifiers to point at **your** repository and signing identity:
 
-1. Enroll in the Apple Developer Program.
-2. Create a Developer ID Application certificate.
-3. Sign the app: `codesign --force --deep --sign "Developer ID Application: …" out/Yanshuf-darwin-*/Yanshuf.app`
-4. Notarize with `xcrun notarytool submit` and staple the ticket.
+| What | Where |
+|------|--------|
+| GitHub repo for releases | [`apps/desktop/forge.config.ts`](apps/desktop/forge.config.ts) — `publishers` config |
+| In-app update feed | [`apps/desktop/src/main/updater.ts`](apps/desktop/src/main/updater.ts) — `GITHUB_REPO` |
+| App bundle ID | [`apps/desktop/forge.config.ts`](apps/desktop/forge.config.ts) — `appBundleId` |
+| App name, icon, author | [`apps/desktop/package.json`](apps/desktop/package.json), [`apps/desktop/assets/`](apps/desktop/assets/) |
 
-Set `packagerConfig.osxSign` and `osxNotarize` in `apps/desktop/forge.config.ts` once credentials are available.
+Then follow [docs/RELEASE.md](docs/RELEASE.md) to configure Apple Developer credentials as GitHub Actions secrets. In-app updates require signed, notarized builds and ZIP assets on GitHub Releases (the release workflow produces both DMG and ZIP).
 
-## HTTP/2
+If you maintain a public fork with meaningful changes, consider renaming the app and using a distinct bundle ID so it can coexist with upstream Yanshuf on the same Mac.
 
-See [docs/HTTP2.md](docs/HTTP2.md) for MITM protocol limitations and the v1.1 plan.
+## Contributing
+
+Contributions are welcome — bug reports, feature ideas, and pull requests.
+
+Before opening a PR:
+
+1. Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`.
+2. Keep changes focused; match existing code style.
+3. Describe what changed and why in the PR.
+
+For larger changes, open an issue first so we can align on approach.
+
+## Documentation
+
+- [Releasing & updates](docs/RELEASE.md)
+- [HTTP/2 limitations](docs/HTTP2.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) — Copyright (c) 2026 Yanshuf
