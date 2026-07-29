@@ -21,11 +21,13 @@ Pre-built releases are published on [GitHub Releases](https://github.com/sefi-uz
 3. Launch Yanshuf. On first run, follow the setup guide to install and trust the **Yanshuf Root CA** so HTTPS traffic can be decrypted.
 4. Enable capture when you're ready to inspect traffic.
 
+Read [Security and trust](docs/user/security-and-trust.md) before installing the certificate — Yanshuf decrypts HTTPS traffic routed through it, and all capture data stays on your Mac.
+
 Official releases are signed and notarized, so Gatekeeper should accept them without extra steps.
 
 ### Updates
 
-Installed apps check for updates in the background and from **Settings → General → Check for updates**. When a newer version is available, Yanshuf downloads it and prompts you to **Restart & update**.
+Installed apps check for updates in the background and from **Settings → General → Check for updates**. When a newer version is available, Yanshuf downloads it and prompts you to **Restart & update**. See [Keeping Yanshuf up to date](docs/user/updates.md) for details.
 
 ## Features
 
@@ -127,24 +129,9 @@ xattr -cr /Applications/Yanshuf.app
 
 > Yanshuf changes your macOS system proxy while capturing. If the app is force-quit or crashes, reopen it (it restores the proxy on launch) or turn the proxy off under **System Settings → Network → … → Proxies**.
 
-## Releasing
-
-Official releases are cut from git tags and built in GitHub Actions. See [docs/RELEASE.md](docs/RELEASE.md) for Apple signing, notarization, GitHub secrets, and the release workflow.
-
 ## Forking
 
-You're welcome to fork Yanshuf and ship your own build. Before publishing releases or enabling in-app updates, update project-specific identifiers to point at **your** repository and signing identity:
-
-| What | Where |
-|------|--------|
-| GitHub repo for releases | [`apps/desktop/forge.config.ts`](apps/desktop/forge.config.ts) — `publishers` config |
-| In-app update feed | [`apps/desktop/src/main/updater.ts`](apps/desktop/src/main/updater.ts) — `GITHUB_REPO` |
-| App bundle ID | [`apps/desktop/forge.config.ts`](apps/desktop/forge.config.ts) — `appBundleId` |
-| App name, icon, author | [`apps/desktop/package.json`](apps/desktop/package.json), [`apps/desktop/assets/`](apps/desktop/assets/) |
-
-Then follow [docs/RELEASE.md](docs/RELEASE.md) to configure Apple Developer credentials as GitHub Actions secrets. In-app updates require signed, notarized builds and ZIP assets on GitHub Releases (the release workflow produces both DMG and ZIP).
-
-If you maintain a public fork with meaningful changes, consider renaming the app and using a distinct bundle ID so it can coexist with upstream Yanshuf on the same Mac.
+You're welcome to fork Yanshuf and ship your own build. Update repository identifiers, bundle ID, and branding, then follow the [release checklist](docs/operations/release.md) to configure signing and publish from your fork.
 
 ## Contributing
 
@@ -160,8 +147,12 @@ For larger changes, open an issue first so we can align on approach.
 
 ## Documentation
 
-- [Releasing & updates](docs/RELEASE.md)
-- [HTTP/2 limitations](docs/HTTP2.md)
+See [docs](docs) for user guides, architecture notes, and maintainer operations.
+
+- [Keeping Yanshuf up to date](docs/user/updates.md)
+- [Security and trust](docs/user/security-and-trust.md)
+- [Protocol limitations](docs/architecture/limitations.md)
+- [Operations](docs/operations/ci.md)
 
 ## License
 

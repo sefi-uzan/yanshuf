@@ -9,7 +9,25 @@ permissions:
   contents: write
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
   release:
+    needs: preflight
     runs-on: macos-latest
     strategy:
       # Both architectures attach to the same GitHub release, so build them one at a
@@ -102,7 +120,7 @@ jobs:
   finalize:
     # Flipping the draft is what makes the release visible to the in-app updater, so it
     # only happens once every architecture has been verified and uploaded.
-    needs: release
+    needs: [preflight, release]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the draft release

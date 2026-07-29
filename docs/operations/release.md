@@ -1,8 +1,44 @@
-# Releasing Yanshuf Desktop
+# Release checklist
 
-Yanshuf publishes signed, notarized macOS DMGs and ZIPs to [GitHub Releases](https://github.com/sefi-uzan/yanshuf/releases). DMGs are for first-time install; ZIPs power in-app updates. The running app checks for newer versions in the background and from **Settings → General → Check for updates**.
+Maintainer guide for signed macOS desktop releases and in-app updates.
+
+## What the workflow does
+
+- Workflow: [`.github/workflows/release-desktop.yml`](../../.github/workflows/release-desktop.yml)
+- Trigger: push a tag matching `v*` (for example `v1.0.1`)
+- Builds `arm64` and `x64` sequentially, signs and notarizes each `.app`, produces a DMG and ZIP per architecture, verifies with `codesign` / `stapler` / `spctl`, and uploads artifacts to a **draft** GitHub Release
+- A final job publishes the draft once every architecture succeeds
+
+Yanshuf publishes signed, notarized macOS DMGs and ZIPs to [GitHub Releases](https://github.com/sefi-uzan/yanshuf/releases). DMGs are for first-time install; ZIPs power in-app updates.
 
 Both the `.app` and the `.dmg` are notarized and stapled. Gatekeeper assesses the disk image a user downloads, not only the app inside it, so notarizing just the app is not enough.
+
+The draft stage matters: the in-app updater reads GitHub's `/releases/latest`, which excludes drafts. Nothing reaches users until every architecture is attached and verified. If a build fails, the draft stays hidden and can be deleted.
+
+Expect the whole run to take a while — there are four notarization submissions, and each can take anywhere from a few minutes to half an hour.
+
+## Desktop auto-update notes
+
+- Runtime updater: Electron `autoUpdater` via [update.electronjs.org](https://update.electronjs.org) in [`apps/desktop/src/main/updater.ts`](../../apps/desktop/src/main/updater.ts)
+- Feed repo: `GITHUB_REPO` in that file (forks must change this)
+- Update UX: background checks in packaged builds; download in the background; toast with **Restart & update** when ready
+- Required release assets: signed `.dmg` (install) and `.zip` (Squirrel.Mac update payload) per architecture
+
+### Testing update checks
+
+Override the background interval when launching a packaged build:
+
+```bash
+/Applications/Yanshuf.app/Contents/MacOS/Yanshuf --update-check-interval=30
+```
+
+Or:
+
+```bash
+open -a Yanshuf --args --update-check-interval=30
+```
+
+Invalid or missing values fall back to the default one-hour interval. Settings **Check for updates** is still the fastest one-shot test.
 
 ## One-time setup: Apple Developer
 
@@ -93,40 +129,23 @@ git tag v1.0.1
 git push origin v1.0.1
 ```
 
-The **Release Desktop** workflow then, for `arm64` and `x64` in turn, builds the app, signs and notarizes the `.app`, builds and signs the DMG, notarizes and staples the DMG, verifies all of it with `codesign`/`stapler`/`spctl`, and uploads it to a **draft** release. Once both architectures succeed, a final job flips the draft to published and marks it as latest.
+## Forking
 
-The draft stage matters: the in-app updater reads GitHub's `/releases/latest`, which excludes drafts. Nothing reaches users until every architecture is attached and verified. If a build fails, the draft simply stays hidden and can be deleted.
+Before publishing releases or enabling in-app updates from a fork, update project-specific identifiers:
 
-Expect the whole run to take a while — there are four notarization submissions, and each can take anywhere from a few minutes to half an hour.
+| What | Where |
+|------|--------|
+| GitHub repo for releases | [`apps/desktop/forge.config.ts`](../../apps/desktop/forge.config.ts) — `publishers` config |
+| In-app update feed | [`apps/desktop/src/main/updater.ts`](../../apps/desktop/src/main/updater.ts) — `GITHUB_REPO` |
+| App bundle ID | [`apps/desktop/forge.config.ts`](../../apps/desktop/forge.config.ts) — `appBundleId` |
+| App name, icon, author | [`apps/desktop/package.json`](../../apps/desktop/package.json), [`apps/desktop/assets/`](../../apps/desktop/assets/) |
 
-Installed apps pick up the new version on the next background check (hourly) or when the user clicks **Check for updates**.
+If you ship a public fork with meaningful changes, use a distinct app name and bundle ID so it can coexist with upstream Yanshuf on the same Mac.
 
-## CI
+## Ongoing release checklist
 
-- **CI** (`.github/workflows/ci.yml`) — typecheck, lint, and unit tests on PRs and pushes to `main`.
-- **Release Desktop** (`.github/workflows/release-desktop.yml`) — runs on `v*` tags only.
-
-## Update behavior
-
-- Background check runs every hour in packaged builds.
-- When a newer semver is on GitHub Releases, the app downloads the signed ZIP in the background.
-- When the download finishes, a toast appears with **Restart & update**. Clicking it quits and relaunches into the new version.
-- **Check for updates** in Settings triggers the same flow immediately and shows whether you are up to date, downloading, ready to restart, or hit an error.
-- DMGs remain available on GitHub for manual first-time installs or recovery.
-- Existing installs that only open the release page need one manual DMG upgrade to a build that includes in-app updates and a release that includes ZIP assets. After that, updates stay in-app.
-
-### Testing update checks
-
-Override the background interval when launching a packaged build:
-
-```bash
-/Applications/Yanshuf.app/Contents/MacOS/Yanshuf --update-check-interval=30
-```
-
-Or:
-
-```bash
-open -a Yanshuf --args --update-check-interval=30
-```
-
-Invalid or missing values fall back to the default one-hour interval. Settings **Check for updates** is still the fastest one-shot test.
+1. Ensure `main` is green in CI.
+2. Create release tag: `vX.Y.Z`.
+3. Push tag.
+4. Verify the workflow builds, signs, and publishes both architectures.
+5. Smoke-test the downloaded DMG and in-app update from the previous release when possible.

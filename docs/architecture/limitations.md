@@ -1,4 +1,4 @@
-# HTTP/2 MITM Notes
+# Protocol limitations
 
 Yanshuf v1 uses `http-mitm-proxy`, which terminates TLS and forwards traffic over **HTTP/1.1** internally after decryption.
 
