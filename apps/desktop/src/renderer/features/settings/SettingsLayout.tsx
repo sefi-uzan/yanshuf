@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { Input } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
 
 interface SettingsSectionProps {
@@ -60,6 +61,93 @@ export function SettingsField({ id, label, hint, children }: SettingsFieldProps)
       </label>
       {children}
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+interface NumberFieldProps
+  extends Omit<ComponentProps<typeof Input>, 'id' | 'value' | 'onChange' | 'type'> {
+  id: string;
+  label: string;
+  value: number;
+  hint?: string;
+  onCommit: (value: number) => void;
+}
+
+/**
+ * Commits on blur or Enter rather than on every keystroke. These values restart the
+ * proxy or resize the ring buffer, so committing mid-typing would thrash them.
+ */
+export function NumberField({
+  id,
+  label,
+  value,
+  hint,
+  onCommit,
+  disabled,
+  className,
+  ...inputProps
+}: NumberFieldProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    if (parsed !== value) onCommit(parsed);
+  };
+
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
+        type="number"
+        className={cn('h-8', className)}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(String(value));
+          }
+        }}
+        {...inputProps}
+      />
+      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+interface SettingsToggleProps {
+  label: string;
+  description?: ReactNode;
+  children: ReactNode;
+}
+
+/** Label + description on the left, control on the right. */
+export function SettingsToggle({ label, description, children }: SettingsToggleProps) {
+  return (
+    <div className="flex items-start justify-between gap-3 p-3">
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-sm font-medium">{label}</p>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="shrink-0 pt-0.5">{children}</div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ export function HeroSection() {
             className="animate-fade-up mt-4 text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl"
             style={{ animationDelay: '80ms' }}
           >
-            See every request your Mac makes.
+            {siteConfig.headline}
           </h1>
           <p
             className="animate-fade-up mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl"

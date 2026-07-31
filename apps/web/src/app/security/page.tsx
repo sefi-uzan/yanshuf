@@ -7,7 +7,7 @@ import { navLinks } from '@/lib/site-config';
 export const metadata: Metadata = createMetadata({
   title: 'Security Policy',
   description:
-    'Security and trust model for Yanshuf — local HTTPS debugging, certificate handling, official builds, and vulnerability reporting.',
+    'How Yanshuf decrypts HTTPS on your Mac, what the root certificate does, and how to report a security problem.',
   path: '/security',
 });
 

@@ -3,24 +3,24 @@ export const screenshots = {
     src: '/screenshots/capture.png',
     width: 3608,
     height: 2072,
-    alt: 'Yanshuf capture view showing a three-pane HTTP inspector with request list, sent request details, and response body',
+    alt: 'The Yanshuf capture view. It has three panes: the request list, the request details, and the response body.',
   },
   trafficRules: {
     src: '/screenshots/traffic-rules.png',
     width: 1024,
     height: 838,
-    alt: 'Yanshuf traffic rules screen with Mock, Rewrite, Breakpoint, and Map Remote options',
+    alt: 'The Yanshuf rules screen. It shows the Mock, Rewrite, Breakpoint, and Map Remote actions.',
   },
   composer: {
     src: '/screenshots/composer.png',
     width: 1024,
     height: 834,
-    alt: 'Yanshuf Composer with method and URL fields, headers, and quick-start templates',
+    alt: 'The Yanshuf Composer. It has a method field, a URL field, the headers, and the templates.',
   },
   aiIntegration: {
     src: '/screenshots/ai-integration.png',
     width: 870,
     height: 1024,
-    alt: 'Yanshuf AI integration settings showing Cursor MCP server, hooks, and skills connected',
+    alt: 'The Yanshuf AI Integration settings. Cursor, the MCP server, the hooks, and the skills are connected.',
   },
 } as const;

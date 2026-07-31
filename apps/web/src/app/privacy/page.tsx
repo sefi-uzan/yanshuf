@@ -6,7 +6,7 @@ import { LegalLayout } from '@/components/legal-layout';
 export const metadata: Metadata = createMetadata({
   title: 'Privacy Policy',
   description:
-    'How Yanshuf handles data — local capture on your Mac, no accounts, and what this website collects.',
+    'Yanshuf keeps your captures on your Mac. There are no accounts. Read what this website collects.',
   path: '/privacy',
 });
 

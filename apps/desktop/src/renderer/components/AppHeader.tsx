@@ -1,16 +1,11 @@
 import { PenLine, Settings, Zap } from 'lucide-react';
 import { Button } from '@yanshuf/ui';
-import { ExpandableSearch } from '@/components/ExpandableSearch';
 import { ShortcutHint } from '@/components/shortcut-hints';
 import { cn } from '@yanshuf/ui/lib/utils';
 import type { DetailMode } from '@/features/capture/detailMode';
 import { SHORTCUTS } from '@yanshuf/shared';
 
 interface AppHeaderProps {
-  searchQuery: string;
-  onSearchChange: (value: string) => void;
-  searchOpen: boolean;
-  onSearchOpenChange: (open: boolean) => void;
   detailMode: DetailMode;
   onToggleDetailMode: (mode: DetailMode) => void;
   onOpenSettings: () => void;
@@ -21,22 +16,12 @@ function ToolbarDivider() {
 }
 
 export function AppHeader({
-  searchQuery,
-  onSearchChange,
-  searchOpen,
-  onSearchOpenChange,
   detailMode,
   onToggleDetailMode,
   onOpenSettings,
 }: AppHeaderProps) {
   return (
-    <header className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b px-4 py-2">
-      <ExpandableSearch
-        value={searchQuery}
-        onChange={onSearchChange}
-        open={searchOpen}
-        onOpenChange={onSearchOpenChange}
-      />
+    <header className="flex items-center justify-center border-b px-4 py-2">
       <div className="flex min-w-0 justify-center">
         <div
           data-tour="rules-composer"
@@ -76,7 +61,6 @@ export function AppHeader({
           </Button>
         </div>
       </div>
-      <div className="h-7 w-7 shrink-0" aria-hidden />
     </header>
   );
 }

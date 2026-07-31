@@ -4,7 +4,7 @@ import type {
   AutoResponderRule,
   CaptureEntry,
   CaptureEntrySummary,
-  CaptureFilterApplyAction,
+  RecordingExclusionAction,
   CertStatus,
   BreakpointSnapshot,
   ComposedEntry,
@@ -45,8 +45,8 @@ export interface YanshufAPI {
     clear: () => Promise<CaptureEntrySummary[]>;
     onUpdated: (callback: (entries: CaptureEntrySummary[]) => void) => () => void;
   };
-  captureFilter: {
-    apply: (action: CaptureFilterApplyAction) => Promise<ProxyStatus>;
+  recordingExclusions: {
+    apply: (action: RecordingExclusionAction) => Promise<ProxyStatus>;
   };
   cert: {
     status: () => Promise<CertStatus>;
@@ -156,8 +156,8 @@ const api: YanshufAPI = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_UPDATED, handler);
     },
   },
-  captureFilter: {
-    apply: (action) => ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_FILTER_APPLY, action),
+  recordingExclusions: {
+    apply: (action) => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_EXCLUSIONS_APPLY, action),
   },
   cert: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.CERT_STATUS),

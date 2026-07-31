@@ -4,7 +4,6 @@ import type {
   AppSettings,
   AutoResponderRule,
   BreakpointSnapshot,
-  CaptureFilterApplyAction,
   ComposedEntry,
   ComposerRequest,
   IntegrationUninstallPayload,
@@ -13,15 +12,15 @@ import type {
   InterceptRule,
   MapRemoteRule,
   MenuAction,
+  RecordingExclusionAction,
   SkillInstallTarget,
   ThrottleSetPatch,
 } from '@yanshuf/shared';
 import {
-  DEFAULT_CAPTURE_FILTER,
   DEFAULT_THROTTLE,
   IPC_CHANNELS,
   exportCurl,
-  addHostToCaptureFilter,
+  addHostToExclusions,
   mergeThrottleSettings,
   normalizeAppSettings,
   shouldRecordCapture,
@@ -151,7 +150,7 @@ function applyAppIcon(): void {
 
 function buildShouldCapture(): (url: string, host: string) => boolean {
   return (url, host) =>
-    shouldRecordCapture(url, host, settings.captureFilter ?? DEFAULT_CAPTURE_FILTER, {
+    shouldRecordCapture(url, host, settings.recordingExclusions ?? [], {
       captureLocalhost: settings.captureLocalhost ?? false,
       proxyPort: settings.port,
       mcpApiPort,
@@ -287,32 +286,34 @@ function broadcastProxyStatus(immediate = false): void {
   proxyStatusBroadcastTimer = setTimeout(flushProxyStatus, PROXY_STATUS_BROADCAST_INTERVAL_MS);
 }
 
-function applyCaptureFilterSettings(nextFilter: typeof DEFAULT_CAPTURE_FILTER): void {
+/**
+ * Exclusions only govern what is recorded from here on, so already-captured
+ * entries are left alone — nothing the user has collected is thrown away.
+ */
+function applyRecordingExclusions(next: string[]): void {
   settings = {
     ...settings,
-    captureFilter: nextFilter,
+    recordingExclusions: next,
   };
   proxyServer.updateOptions({ shouldCapture: buildShouldCapture() });
   proxyServer.resetHiddenCount();
-  captureStore.clear();
-  broadcastCaptureUpdate(true);
   broadcastProxyStatus(true);
 }
 
-async function applyCaptureFilterAction(action: CaptureFilterApplyAction): Promise<void> {
-  const current = settings.captureFilter ?? DEFAULT_CAPTURE_FILTER;
+async function applyRecordingExclusionAction(action: RecordingExclusionAction): Promise<void> {
+  const current = settings.recordingExclusions ?? [];
   let next = current;
 
   switch (action.type) {
     case 'addHost':
-      next = addHostToCaptureFilter(current, action.host);
+      next = addHostToExclusions(current, action.host);
       break;
     case 'clear':
-      next = { ...DEFAULT_CAPTURE_FILTER };
+      next = [];
       break;
   }
 
-  applyCaptureFilterSettings(next);
+  applyRecordingExclusions(next);
   await saveSettings();
 }
 
@@ -519,10 +520,13 @@ function registerIpc(): void {
     return [];
   });
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_FILTER_APPLY, async (_e, action: CaptureFilterApplyAction) => {
-    await applyCaptureFilterAction(action);
-    return getProxyStatus();
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.RECORDING_EXCLUSIONS_APPLY,
+    async (_e, action: RecordingExclusionAction) => {
+      await applyRecordingExclusionAction(action);
+      return getProxyStatus();
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.CERT_STATUS, () => certManager.getStatus());
 
@@ -621,13 +625,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
     const prevPort = settings.port;
     const prevCaptureLocalhost = settings.captureLocalhost;
-    const prevFilter = settings.captureFilter ?? DEFAULT_CAPTURE_FILTER;
+    const prevExclusions = settings.recordingExclusions ?? [];
     settings = {
       ...next,
-      captureFilter: {
-        ...DEFAULT_CAPTURE_FILTER,
-        ...next.captureFilter,
-      },
+      recordingExclusions: next.recordingExclusions ?? [],
       throttle: {
         ...DEFAULT_THROTTLE,
         ...next.throttle,
@@ -642,14 +643,10 @@ function registerIpc(): void {
       shouldCapture: buildShouldCapture(),
     });
 
-    const filtersChanged =
-      prevFilter.mode !== settings.captureFilter.mode ||
-      prevFilter.urls !== settings.captureFilter.urls;
-    if (filtersChanged) {
-      proxyServer.resetHiddenCount();
-      captureStore.clear();
-      broadcastCaptureUpdate(true);
-    }
+    // Exclusions govern future traffic only, so captured entries survive the change.
+    const exclusionsChanged =
+      prevExclusions.join(';') !== settings.recordingExclusions.join(';');
+    if (exclusionsChanged) proxyServer.resetHiddenCount();
     broadcastProxyStatus(true);
 
     if (settings.captureLocalhost !== prevCaptureLocalhost) {

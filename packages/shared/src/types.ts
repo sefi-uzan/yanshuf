@@ -139,9 +139,13 @@ export interface ComposedEntry {
   lastDurationMs?: number;
 }
 
+/**
+ * Legacy shape, still read from disk so existing settings can be migrated into a
+ * view query. See `normalizeAppSettings`.
+ */
 export type CaptureFilterMode = 'include' | 'exclude';
 
-export interface CaptureFilterSettings {
+export interface LegacyCaptureFilterSettings {
   mode: CaptureFilterMode;
   /** Semicolon-separated URL patterns, e.g. `*.google.com;*.example.com/api` */
   urls: string;
@@ -171,9 +175,18 @@ export interface AppSettings {
   maxBodySize: number;
   capturing: boolean;
   guidedTourCompleted?: boolean;
-  captureFilter: CaptureFilterSettings;
+  /**
+   * Host patterns that are proxied but never recorded. Everything else is kept and
+   * filtered in the view, so filtering is reversible.
+   */
+  recordingExclusions: string[];
   captureLocalhost: boolean;
   throttle: ThrottleSettings;
+  /**
+   * One-shot carrier for a view query migrated from the old capture filter. The
+   * renderer consumes it on first launch and clears it.
+   */
+  migratedViewQuery?: string;
 }
 
 export interface CertStatus {
@@ -185,13 +198,12 @@ export interface CertStatus {
   keychainLocation?: 'none' | 'login' | 'system';
 }
 
-export interface CaptureFilterStatus {
-  /** True when URL glob patterns are configured. */
-  active: boolean;
-  mode: CaptureFilterMode;
+export interface RecordingExclusionStatus {
+  /** True when any exclusion pattern is configured. */
+  excluding: boolean;
   patternCount: number;
-  /** Requests proxied but not shown since the last clear or filter change. */
-  hiddenCount: number;
+  /** Requests proxied but never recorded since the last clear or settings change. */
+  droppedCount: number;
 }
 
 export interface ProxyStatus {
@@ -199,17 +211,14 @@ export interface ProxyStatus {
   port: number;
   entryCount: number;
   throttle: ThrottleSettings;
-  captureFilter: CaptureFilterStatus;
+  recordingExclusions: RecordingExclusionStatus;
 }
 
 export interface SystemProxyState {
   enabled: boolean;
 }
 
-export const DEFAULT_CAPTURE_FILTER: CaptureFilterSettings = {
-  mode: 'exclude',
-  urls: '',
-};
+export const DEFAULT_RECORDING_EXCLUSIONS: string[] = [];
 
 export const DEFAULT_THROTTLE: ThrottleSettings = {
   enabled: false,
@@ -225,7 +234,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxBodySize: 5 * 1024 * 1024,
   capturing: false,
   guidedTourCompleted: false,
-  captureFilter: DEFAULT_CAPTURE_FILTER,
+  recordingExclusions: DEFAULT_RECORDING_EXCLUSIONS,
   captureLocalhost: false,
   throttle: DEFAULT_THROTTLE,
 };
@@ -240,7 +249,7 @@ export const IPC_CHANNELS = {
   CAPTURE_GET: 'capture:get',
   CAPTURE_CLEAR: 'capture:clear',
   CAPTURE_UPDATED: 'capture:updated',
-  CAPTURE_FILTER_APPLY: 'capture-filter:apply',
+  RECORDING_EXCLUSIONS_APPLY: 'recording-exclusions:apply',
   PROXY_STATUS_UPDATED: 'proxy:status-updated',
   CERT_STATUS: 'cert:status',
   CERT_EXPORT: 'cert:export',

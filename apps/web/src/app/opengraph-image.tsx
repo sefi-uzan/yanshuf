@@ -47,10 +47,10 @@ export default function OpenGraphImage() {
               maxWidth: 900,
             }}
           >
-            See every request your Mac makes.
+            {siteConfig.headline}
           </div>
           <div style={{ fontSize: 28, color: '#a1a1aa', maxWidth: 800, lineHeight: 1.4 }}>
-            Open-source network debugger for macOS. Inspect, mock, and replay HTTP/HTTPS traffic.
+            {siteConfig.tagline} Read a request, change it, and send it again.
           </div>
         </div>
       </div>

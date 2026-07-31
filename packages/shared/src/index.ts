@@ -11,6 +11,7 @@ export * from './json';
 export * from './shortcuts';
 export * from './dnd';
 export * from './mcp-api';
+export * from './capture-query';
 export * from './capture-search';
 export * from './capture-to-rule';
 export * from './capture-to-composer';

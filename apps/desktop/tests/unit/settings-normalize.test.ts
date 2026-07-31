@@ -40,4 +40,51 @@ describe('normalizeAppSettings', () => {
     expect(settings).not.toHaveProperty('systemProxyEnabled');
     expect(settings).not.toHaveProperty('proxyRunning');
   });
+
+  it('defaults recording exclusions to empty', () => {
+    expect(normalizeAppSettings({}).recordingExclusions).toEqual([]);
+    expect(normalizeAppSettings({ recordingExclusions: ['*.x.com'] }).recordingExclusions).toEqual([
+      '*.x.com',
+    ]);
+  });
+
+  describe('capture filter migration', () => {
+    it('turns an old exclude filter into a negated view query', () => {
+      const settings = normalizeAppSettings({
+        captureFilter: { mode: 'exclude', urls: '*.analytics.com' },
+      });
+
+      expect(settings.migratedViewQuery).toBe('-host:*.analytics.com');
+      // Nothing is dropped at record time until the user opts in.
+      expect(settings.recordingExclusions).toEqual([]);
+    });
+
+    it('turns an old include filter into a positive view query', () => {
+      const settings = normalizeAppSettings({
+        captureFilter: { mode: 'include', urls: '*.google.com;*.example.com/api' },
+      });
+
+      expect(settings.migratedViewQuery).toBe('host:*.google.com host:*.example.com/api');
+    });
+
+    it('drops the legacy field from the normalized shape', () => {
+      const settings = normalizeAppSettings({
+        captureFilter: { mode: 'exclude', urls: '*.analytics.com' },
+      });
+
+      expect(settings).not.toHaveProperty('captureFilter');
+    });
+
+    it('emits nothing when there was no filter to migrate', () => {
+      expect(normalizeAppSettings({}).migratedViewQuery).toBeUndefined();
+      expect(
+        normalizeAppSettings({ captureFilter: { mode: 'exclude', urls: '' } }).migratedViewQuery,
+      ).toBeUndefined();
+    });
+
+    it('is a no-op once the renderer has consumed the query', () => {
+      const settings = normalizeAppSettings({ recordingExclusions: [] });
+      expect(settings.migratedViewQuery).toBeUndefined();
+    });
+  });
 });

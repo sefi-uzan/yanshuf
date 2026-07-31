@@ -1,23 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type {
-  CaptureFilterMode,
-  CertStatus,
-  IntegrationClient,
-  ThrottlePreset,
-} from '@yanshuf/shared';
-import { DEFAULT_SETTINGS } from '@yanshuf/shared';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Tabs, TabsContent, TabsList, TabsTrigger } from '@yanshuf/ui';
-import { useShortcutHints } from '@/components/shortcut-hints';
+import { useEffect, useState } from 'react';
+import type { AppSettings, CertStatus, IntegrationClient } from '@yanshuf/shared';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
-import { Bot, Shield, SlidersHorizontal } from 'lucide-react';
+import { Bot, Gauge, Info, Radio, Shield } from 'lucide-react';
 import { CertificateSettings } from './CertificateSettings';
 import { AiIntegrationSettings } from './AiIntegrationSettings';
-import { GeneralSettings } from './GeneralSettings';
-import { GeneralSettingsFooter } from './GeneralSettingsFooter';
+import { AboutSettings } from './AboutSettings';
+import { CaptureSettings } from './CaptureSettings';
+import { NetworkSettings } from './NetworkSettings';
+import { useAppSettings } from './useAppSettings';
 import { IntegrationOnboarding } from '../integration/IntegrationOnboarding';
-import { clearCapturedRequests, notifyActionFailed, notifySaved } from '@/lib/toast-actions';
+import { notifySaved } from '@/lib/toast-actions';
 
-export type SettingsTab = 'general' | 'certificate' | 'ai';
+export type SettingsTab = 'capture' | 'network' | 'certificate' | 'ai' | 'about';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -31,31 +36,24 @@ interface SettingsPanelProps {
   onIntegrationStatusChange?: () => void;
 }
 
-const BYTES_PER_MB = 1024 * 1024;
 const LOCALHOST_HINT_KEY = 'yanshuf.localhost-hint-shown';
-
-function bytesToMb(bytes: number): number {
-  return Math.round(bytes / BYTES_PER_MB);
-}
-
-function mbToBytes(mb: number): number {
-  return Math.max(1, mb) * BYTES_PER_MB;
-}
 
 const NAV_ITEMS: {
   value: SettingsTab;
   label: string;
-  icon: typeof SlidersHorizontal;
+  icon: typeof Radio;
 }[] = [
-  { value: 'general', label: 'General', icon: SlidersHorizontal },
+  { value: 'capture', label: 'Capture', icon: Radio },
+  { value: 'network', label: 'Network', icon: Gauge },
   { value: 'certificate', label: 'Certificate', icon: Shield },
   { value: 'ai', label: 'AI', icon: Bot },
+  { value: 'about', label: 'About', icon: Info },
 ];
 
 export function SettingsPanel({
   open,
   onOpenChange,
-  defaultTab = 'general',
+  defaultTab = 'capture',
   onCertStatusChange,
   onOpenCertOnboarding,
   certStatus,
@@ -63,228 +61,44 @@ export function SettingsPanel({
   integrationStatusNonce = 0,
   onIntegrationStatusChange,
 }: SettingsPanelProps) {
-  const [port, setPort] = useState(DEFAULT_SETTINGS.port);
-  const [ringBufferSize, setRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
-  const [maxBodySizeMb, setMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
-  const [filterMode, setFilterMode] = useState<CaptureFilterMode>('exclude');
-  const [filterUrls, setFilterUrls] = useState('');
-  const [captureLocalhost, setCaptureLocalhost] = useState(DEFAULT_SETTINGS.captureLocalhost);
-  const [throttleEnabled, setThrottleEnabled] = useState(DEFAULT_SETTINGS.throttle.enabled);
-  const [throttlePreset, setThrottlePreset] = useState<ThrottlePreset>(DEFAULT_SETTINGS.throttle.preset);
-  const [throttleLatencyMs, setThrottleLatencyMs] = useState(DEFAULT_SETTINGS.throttle.latencyMs);
-  const [throttleDownloadKbps, setThrottleDownloadKbps] = useState(DEFAULT_SETTINGS.throttle.downloadKbps);
-  const [throttleUploadKbps, setThrottleUploadKbps] = useState(DEFAULT_SETTINGS.throttle.uploadKbps);
-  const [initialPort, setInitialPort] = useState(DEFAULT_SETTINGS.port);
-  const [initialRingBufferSize, setInitialRingBufferSize] = useState(DEFAULT_SETTINGS.ringBufferSize);
-  const [initialMaxBodySizeMb, setInitialMaxBodySizeMb] = useState(bytesToMb(DEFAULT_SETTINGS.maxBodySize));
-  const [initialFilterMode, setInitialFilterMode] = useState<CaptureFilterMode>('exclude');
-  const [initialFilterUrls, setInitialFilterUrls] = useState('');
-  const [initialCaptureLocalhost, setInitialCaptureLocalhost] = useState(DEFAULT_SETTINGS.captureLocalhost);
-  const [initialThrottleEnabled, setInitialThrottleEnabled] = useState(DEFAULT_SETTINGS.throttle.enabled);
-  const [initialThrottlePreset, setInitialThrottlePreset] = useState<ThrottlePreset>(DEFAULT_SETTINGS.throttle.preset);
-  const [initialThrottleLatencyMs, setInitialThrottleLatencyMs] = useState(DEFAULT_SETTINGS.throttle.latencyMs);
-  const [initialThrottleDownloadKbps, setInitialThrottleDownloadKbps] = useState(
-    DEFAULT_SETTINGS.throttle.downloadKbps,
-  );
-  const [initialThrottleUploadKbps, setInitialThrottleUploadKbps] = useState(
-    DEFAULT_SETTINGS.throttle.uploadKbps,
-  );
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
-  const [saving, setSaving] = useState(false);
   const [integrationClient, setIntegrationClient] = useState<IntegrationClient | null>(null);
-  const { hintsVisible } = useShortcutHints();
+  const { settings, loaded, update } = useAppSettings(open);
 
   useEffect(() => {
-    if (open) {
-      setTab(defaultTab);
-      void window.yanshuf.settings.get().then((s) => {
-        setPort(s.port);
-        setRingBufferSize(s.ringBufferSize);
-        setMaxBodySizeMb(bytesToMb(s.maxBodySize));
-        setFilterMode(s.captureFilter.mode);
-        setFilterUrls(s.captureFilter.urls);
-        setCaptureLocalhost(s.captureLocalhost);
-        setThrottleEnabled(s.throttle.enabled);
-        setThrottlePreset(s.throttle.preset);
-        setThrottleLatencyMs(s.throttle.latencyMs);
-        setThrottleDownloadKbps(s.throttle.downloadKbps);
-        setThrottleUploadKbps(s.throttle.uploadKbps);
-        setInitialPort(s.port);
-        setInitialRingBufferSize(s.ringBufferSize);
-        setInitialMaxBodySizeMb(bytesToMb(s.maxBodySize));
-        setInitialFilterMode(s.captureFilter.mode);
-        setInitialFilterUrls(s.captureFilter.urls);
-        setInitialCaptureLocalhost(s.captureLocalhost);
-        setInitialThrottleEnabled(s.throttle.enabled);
-        setInitialThrottlePreset(s.throttle.preset);
-        setInitialThrottleLatencyMs(s.throttle.latencyMs);
-        setInitialThrottleDownloadKbps(s.throttle.downloadKbps);
-        setInitialThrottleUploadKbps(s.throttle.uploadKbps);
-      });
-    }
+    if (open) setTab(defaultTab);
   }, [open, defaultTab]);
 
-  const isDirty = useMemo(
-    () =>
-      port !== initialPort ||
-      ringBufferSize !== initialRingBufferSize ||
-      maxBodySizeMb !== initialMaxBodySizeMb ||
-      filterMode !== initialFilterMode ||
-      filterUrls !== initialFilterUrls ||
-      captureLocalhost !== initialCaptureLocalhost ||
-      throttleEnabled !== initialThrottleEnabled ||
-      throttlePreset !== initialThrottlePreset ||
-      throttleLatencyMs !== initialThrottleLatencyMs ||
-      throttleDownloadKbps !== initialThrottleDownloadKbps ||
-      throttleUploadKbps !== initialThrottleUploadKbps,
-    [
-      port,
-      ringBufferSize,
-      maxBodySizeMb,
-      filterMode,
-      filterUrls,
-      captureLocalhost,
-      throttleEnabled,
-      throttlePreset,
-      throttleLatencyMs,
-      throttleDownloadKbps,
-      throttleUploadKbps,
-      initialPort,
-      initialRingBufferSize,
-      initialMaxBodySizeMb,
-      initialFilterMode,
-      initialFilterUrls,
-      initialCaptureLocalhost,
-      initialThrottleEnabled,
-      initialThrottlePreset,
-      initialThrottleLatencyMs,
-      initialThrottleDownloadKbps,
-      initialThrottleUploadKbps,
-    ],
-  );
-
-  const reset = () => {
-    setPort(initialPort);
-    setRingBufferSize(initialRingBufferSize);
-    setMaxBodySizeMb(initialMaxBodySizeMb);
-    setFilterMode(initialFilterMode);
-    setFilterUrls(initialFilterUrls);
-    setCaptureLocalhost(initialCaptureLocalhost);
-    setThrottleEnabled(initialThrottleEnabled);
-    setThrottlePreset(initialThrottlePreset);
-    setThrottleLatencyMs(initialThrottleLatencyMs);
-    setThrottleDownloadKbps(initialThrottleDownloadKbps);
-    setThrottleUploadKbps(initialThrottleUploadKbps);
-  };
-
-  const save = useCallback(async () => {
-    setSaving(true);
-    try {
-      const filtersChanged = filterMode !== initialFilterMode || filterUrls !== initialFilterUrls;
-      const localhostNewlyEnabled = captureLocalhost && !initialCaptureLocalhost;
-      const current = await window.yanshuf.settings.get();
-      await window.yanshuf.settings.save({
-        ...current,
-        port,
-        ringBufferSize,
-        maxBodySize: mbToBytes(maxBodySizeMb),
-        captureFilter: {
-          mode: filterMode,
-          urls: filterUrls,
-        },
-        captureLocalhost,
-        throttle: {
-          enabled: throttleEnabled,
-          preset: throttlePreset,
-          latencyMs: throttleLatencyMs,
-          downloadKbps: throttleDownloadKbps,
-          uploadKbps: throttleUploadKbps,
-        },
-      });
-      setInitialPort(port);
-      setInitialRingBufferSize(ringBufferSize);
-      setInitialMaxBodySizeMb(maxBodySizeMb);
-      setInitialFilterMode(filterMode);
-      setInitialFilterUrls(filterUrls);
-      setInitialCaptureLocalhost(captureLocalhost);
-      setInitialThrottleEnabled(throttleEnabled);
-      setInitialThrottlePreset(throttlePreset);
-      setInitialThrottleLatencyMs(throttleLatencyMs);
-      setInitialThrottleDownloadKbps(throttleDownloadKbps);
-      setInitialThrottleUploadKbps(throttleUploadKbps);
-      if (filtersChanged) {
-        await clearCapturedRequests({ toast: false });
-      }
-      if (localhostNewlyEnabled && !localStorage.getItem(LOCALHOST_HINT_KEY)) {
-        localStorage.setItem(LOCALHOST_HINT_KEY, '1');
-        notifySaved(
-          'Localhost capture enabled. Some apps still bypass localhost — point them at the proxy if traffic does not appear.',
-        );
-      } else {
-        notifySaved('Settings');
-      }
-      onOpenChange(false);
-    } catch (error) {
-      notifyActionFailed('save settings', error);
-    } finally {
-      setSaving(false);
+  const handleUpdate = (patch: Partial<AppSettings>) => {
+    update(patch);
+    if (
+      patch.captureLocalhost &&
+      !settings.captureLocalhost &&
+      !localStorage.getItem(LOCALHOST_HINT_KEY)
+    ) {
+      localStorage.setItem(LOCALHOST_HINT_KEY, '1');
+      notifySaved(
+        'Localhost capture enabled. Some apps still bypass localhost — point them at the proxy if traffic does not appear.',
+      );
     }
-  }, [
-    captureLocalhost,
-    filterMode,
-    filterUrls,
-    initialCaptureLocalhost,
-    initialFilterMode,
-    initialFilterUrls,
-    initialThrottleDownloadKbps,
-    initialThrottleEnabled,
-    initialThrottleLatencyMs,
-    initialThrottlePreset,
-    initialThrottleUploadKbps,
-    maxBodySizeMb,
-    onOpenChange,
-    port,
-    ringBufferSize,
-    throttleDownloadKbps,
-    throttleEnabled,
-    throttleLatencyMs,
-    throttlePreset,
-    throttleUploadKbps,
-  ]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === 's' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        if (saving) return;
-        if (isDirty) {
-          void save();
-        } else {
-          onOpenChange(false);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, isDirty, saving, save, onOpenChange]);
+  };
 
   const activeNav = NAV_ITEMS.find((item) => item.value === tab);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(36rem,calc(100vh-4rem))] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+      {/* Fixed height so switching tabs never resizes the dialog — short tabs keep the
+          same frame and tall ones scroll in the content column below. */}
+      <DialogContent className="flex h-[min(36rem,calc(100vh-4rem))] max-w-3xl flex-col gap-0 overflow-hidden p-0">
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as SettingsTab)}
-          className="flex h-full min-h-0 flex-1"
+          className="flex min-h-0 flex-1"
         >
           <aside className="flex w-44 shrink-0 flex-col border-r bg-muted/30">
             <DialogHeader className="space-y-0.5 border-b px-3 py-3 text-left">
               <DialogTitle className="text-sm font-semibold">Settings</DialogTitle>
-              <DialogDescription className="text-xs">Configure Yanshuf</DialogDescription>
+              <DialogDescription className="text-xs">Changes apply as you make them</DialogDescription>
             </DialogHeader>
             <TabsList className="flex h-auto flex-col items-stretch justify-start gap-0.5 bg-transparent p-2">
               {NAV_ITEMS.map(({ value, label, icon: Icon }) => (
@@ -309,31 +123,12 @@ export function SettingsPanel({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-              <TabsContent value="general" className="mt-0 focus-visible:outline-none">
-                <GeneralSettings
-                  port={port}
-                  ringBufferSize={ringBufferSize}
-                  maxBodySizeMb={maxBodySizeMb}
-                  filterMode={filterMode}
-                  filterUrls={filterUrls}
-                  captureLocalhost={captureLocalhost}
-                  throttleEnabled={throttleEnabled}
-                  throttlePreset={throttlePreset}
-                  throttleLatencyMs={throttleLatencyMs}
-                  throttleDownloadKbps={throttleDownloadKbps}
-                  throttleUploadKbps={throttleUploadKbps}
-                  onPortChange={setPort}
-                  onRingBufferSizeChange={setRingBufferSize}
-                  onMaxBodySizeMbChange={setMaxBodySizeMb}
-                  onFilterModeChange={setFilterMode}
-                  onFilterUrlsChange={setFilterUrls}
-                  onCaptureLocalhostChange={setCaptureLocalhost}
-                  onThrottleEnabledChange={setThrottleEnabled}
-                  onThrottlePresetChange={setThrottlePreset}
-                  onThrottleLatencyMsChange={setThrottleLatencyMs}
-                  onThrottleDownloadKbpsChange={setThrottleDownloadKbps}
-                  onThrottleUploadKbpsChange={setThrottleUploadKbps}
-                />
+              <TabsContent value="capture" className="mt-0 focus-visible:outline-none">
+                {loaded && <CaptureSettings settings={settings} onUpdate={handleUpdate} />}
+              </TabsContent>
+
+              <TabsContent value="network" className="mt-0 focus-visible:outline-none">
+                {loaded && <NetworkSettings settings={settings} onUpdate={handleUpdate} />}
               </TabsContent>
 
               <TabsContent value="certificate" className="mt-0 focus-visible:outline-none">
@@ -355,18 +150,11 @@ export function SettingsPanel({
                   onStatusChange={onIntegrationStatusChange}
                 />
               </TabsContent>
-            </div>
 
-            {tab === 'general' && (
-              <GeneralSettingsFooter
-                isDirty={isDirty}
-                saving={saving}
-                hintsVisible={hintsVisible}
-                onReset={reset}
-                onCancel={() => onOpenChange(false)}
-                onSave={save}
-              />
-            )}
+              <TabsContent value="about" className="mt-0 focus-visible:outline-none">
+                <AboutSettings />
+              </TabsContent>
+            </div>
           </div>
         </Tabs>
 

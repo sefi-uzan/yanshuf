@@ -4,9 +4,9 @@ import { GitHubIcon } from '@/components/github-icon';
 import { navLinks, siteConfig } from '@/lib/site-config';
 
 const bullets = [
-  'Change the UI. Restyle every surface to match your taste.',
-  'Add rules and integrations. Wire in your own flows and tools.',
-  'Ship your own build. Self-host it or distribute it as your own.',
+  'Change the interface. Make the app look the way you want.',
+  'Add your own rules and tools. You have all of the code.',
+  'Build the app yourself. Give your build to your team.',
 ];
 
 const terminalLines = [
@@ -92,11 +92,11 @@ export function CtaSection() {
     <section className="border-t border-border/60">
       <div className="hero-glow mx-auto max-w-6xl px-6 py-20 text-center sm:py-28">
         <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-          Your traffic deserves better than guesswork.
+          Stop guessing. Look at the traffic.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">
-          Yanshuf is free, open source, and fast. Install it, trust the local CA when you&apos;re ready, and
-          start inspecting.
+          Yanshuf is free and open source. Install it, trust the Yanshuf root certificate, and enable
+          capture.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Button asChild size="lg" className="h-11 min-w-[220px] rounded-lg">

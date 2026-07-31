@@ -14,14 +14,13 @@ import type { CertStatus, IntegrationAggregateStatus, IntegrationClient } from '
 
 export default function App() {
   useAppNotify();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchVisible, setSearchVisible] = useState(false);
+  const [focusFilterNonce, setFocusFilterNonce] = useState(0);
   const [detailMode, setDetailMode] = useState<DetailMode>('capture');
   const [composerLoadEntryId, setComposerLoadEntryId] = useState<string | null>(null);
   const [rulesLoadEntryId, setRulesLoadEntryId] = useState<string | null>(null);
   const [rulesLoadEntryKind, setRulesLoadEntryKind] = useState<'mock' | 'mapRemote'>('mock');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('capture');
   const [focusAiUpdates, setFocusAiUpdates] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [certStatus, setCertStatus] = useState<CertStatus | null>(null);
@@ -52,7 +51,7 @@ export default function App() {
   }, []);
 
   const openSettings = useCallback(() => {
-    setSettingsTab('general');
+    setSettingsTab('capture');
     setFocusAiUpdates(false);
     setSettingsOpen(true);
   }, []);
@@ -64,7 +63,7 @@ export default function App() {
   }, []);
 
   const openFilterSettings = useCallback(() => {
-    setSettingsTab('general');
+    setSettingsTab('capture');
     setFocusAiUpdates(false);
     setSettingsOpen(true);
   }, []);
@@ -72,7 +71,7 @@ export default function App() {
   const toggleSettings = useCallback(() => {
     setSettingsOpen((open) => {
       if (!open) {
-        setSettingsTab('general');
+        setSettingsTab('capture');
         setFocusAiUpdates(false);
       }
       return !open;
@@ -165,7 +164,7 @@ export default function App() {
         await clearCapturedRequests();
         break;
       case 'focus-search':
-        setSearchVisible(true);
+        setFocusFilterNonce((n) => n + 1);
         break;
       case 'open-composer':
         toggleDetailMode('composer');
@@ -196,7 +195,7 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey && e.key === 'f') {
         e.preventDefault();
-        setSearchVisible((v) => !v);
+        setFocusFilterNonce((n) => n + 1);
       }
       if (e.metaKey && e.key === 'k') {
         e.preventDefault();
@@ -222,17 +221,13 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <AppHeader
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchOpen={searchVisible}
-        onSearchOpenChange={setSearchVisible}
         detailMode={detailMode}
         onToggleDetailMode={toggleDetailMode}
         onOpenSettings={openSettings}
       />
       <main className="min-h-0 flex-1">
         <CaptureView
-          searchQuery={searchQuery}
+          focusFilterNonce={focusFilterNonce}
           detailMode={detailMode}
           composerLoadEntryId={composerLoadEntryId}
           onComposerLoadHandled={() => setComposerLoadEntryId(null)}

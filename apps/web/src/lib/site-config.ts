@@ -1,8 +1,9 @@
 export const siteConfig = {
   name: 'Yanshuf',
   tagline: 'The open-source network debugger for macOS.',
+  headline: 'See every request your Mac sends.',
   description:
-    'Inspect, modify, and replay HTTP and HTTPS traffic on your Mac. Route system or app traffic through Yanshuf, mock responses with Auto Responder, and connect AI coding tools via MCP.',
+    'Yanshuf shows the HTTP and HTTPS traffic on your Mac. Read a request, change it, and send it again. Free and open source.',
   url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yanshuf.dev',
   github: {
     repo: 'https://github.com/sefi-uzan/yanshuf',

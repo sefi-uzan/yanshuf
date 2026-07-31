@@ -5,7 +5,7 @@ import { LegalLayout } from '@/components/legal-layout';
 
 export const metadata: Metadata = createMetadata({
   title: 'Terms of Use',
-  description: 'Terms of use for the Yanshuf website and open-source macOS application.',
+  description: 'The terms of use for the Yanshuf website and for the Yanshuf app.',
   path: '/terms',
 });
 

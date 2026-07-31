@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CaptureEntrySummary } from '@yanshuf/shared';
 import { Badge ,
@@ -14,18 +14,20 @@ import { Badge ,
 import { cn } from '@yanshuf/ui/lib/utils';
 import { copyToClipboard, urlWithoutQuery } from '@/lib/copy';
 import { captureToComposerRequest , formatDuration , CAPTURE_DRAG_MIME , exportCurl } from '@yanshuf/shared';
-import { Copy, Ellipsis, Filter, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
+import { Copy, Ellipsis, Eye, EyeOff, Lock, PauseCircle, PenLine, Zap, ArrowRightLeft } from 'lucide-react';
 
 interface SessionListProps {
+  /** Already filtered by the caller so the filter bar and list agree on counts. */
   entries: CaptureEntrySummary[];
+  totalCount: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  searchQuery: string;
   draggable?: boolean;
   onAddToComposer?: (id: string) => void;
   onCreateRule?: (id: string) => void;
   onCreateMapRemoteRule?: (id: string) => void;
-  onAddToFilterSet?: (host: string) => void;
+  onShowOnlyHost?: (host: string) => void;
+  onHideHost?: (host: string) => void;
 }
 
 function statusVariant(status: number): 'success' | 'warning' | 'error' | 'secondary' {
@@ -35,37 +37,23 @@ function statusVariant(status: number): 'success' | 'warning' | 'error' | 'secon
   return 'secondary';
 }
 
-function matchesSearch(entry: CaptureEntrySummary, query: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (
-    entry.url.toLowerCase().includes(q) ||
-    entry.host.toLowerCase().includes(q) ||
-    entry.method.toLowerCase().includes(q) ||
-    String(entry.status).includes(q)
-  );
-}
-
 const SESSION_LIST_GRID = 'grid-cols-[56px_minmax(0,1fr)_48px_72px]';
 const TIME_CELL = 'relative pr-4 text-right';
 
 export function SessionList({
-  entries,
+  entries: filtered,
+  totalCount,
   selectedId,
   onSelect,
-  searchQuery,
   draggable,
   onAddToComposer,
   onCreateRule,
   onCreateMapRemoteRule,
-  onAddToFilterSet,
+  onShowOnlyHost,
+  onHideHost,
 }: SessionListProps) {
-  const filtered = useMemo(
-    () => entries.filter((e) => matchesSearch(e, searchQuery)),
-    [entries, searchQuery],
-  );
   const parentRef = useRef<HTMLDivElement>(null);
-  const prevEntryCountRef = useRef(entries.length);
+  const prevEntryCountRef = useRef(totalCount);
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
@@ -78,8 +66,8 @@ export function SessionList({
 
   useEffect(() => {
     const prevCount = prevEntryCountRef.current;
-    prevEntryCountRef.current = entries.length;
-    if (entries.length <= prevCount || filtered.length === 0) return;
+    prevEntryCountRef.current = totalCount;
+    if (totalCount <= prevCount || filtered.length === 0) return;
 
     // Only auto-follow new rows when the user is already near the bottom,
     // so we don't yank them away while they're inspecting an earlier request.
@@ -91,7 +79,7 @@ export function SessionList({
     requestAnimationFrame(() => {
       virtualizerRef.current.scrollToIndex(filtered.length - 1, { align: 'end' });
     });
-  }, [entries.length, filtered.length]);
+  }, [totalCount, filtered.length]);
 
   return (
     <div className="flex h-full flex-col border-r" data-tour="capture-area">
@@ -224,9 +212,13 @@ export function SessionList({
                           Create Map Remote Rule
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => onAddToFilterSet?.(entry.host)}>
-                          <Filter className="mr-2 h-4 w-4" />
-                          Add to current filter set
+                        <DropdownMenuItem onSelect={() => onShowOnlyHost?.(entry.host)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Show only this host
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onHideHost?.(entry.host)}>
+                          <EyeOff className="mr-2 h-4 w-4" />
+                          Hide this host
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuSub>
@@ -267,20 +259,20 @@ export function SessionList({
         </div>
       </div>
       <div className="border-t bg-muted/10 px-3 py-1.5 text-xs text-muted-foreground">
-        {filtered.length} / {entries.length} requests
-        {entries.some((e) => e.matchedRuleId) && (
+        {filtered.length} shown
+        {filtered.some((e) => e.matchedRuleId) && (
           <span className="ml-2 text-amber-600 dark:text-amber-400">
-            · {entries.filter((e) => e.matchedRuleId).length} mocked
+            · {filtered.filter((e) => e.matchedRuleId).length} mocked
           </span>
         )}
-        {entries.some((e) => e.matchedMapRemoteRuleId) && (
+        {filtered.some((e) => e.matchedMapRemoteRuleId) && (
           <span className="ml-2 text-emerald-600 dark:text-emerald-400">
-            · {entries.filter((e) => e.matchedMapRemoteRuleId).length} mapped
+            · {filtered.filter((e) => e.matchedMapRemoteRuleId).length} mapped
           </span>
         )}
-        {entries.some((e) => e.fromComposer) && (
+        {filtered.some((e) => e.fromComposer) && (
           <span className="ml-2 text-primary">
-            · {entries.filter((e) => e.fromComposer).length} composed
+            · {filtered.filter((e) => e.fromComposer).length} composed
           </span>
         )}
       </div>

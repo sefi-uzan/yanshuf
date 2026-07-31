@@ -1,16 +1,12 @@
 import type { CaptureEntrySummary } from './types';
 import type { CaptureSearchParams } from './mcp-api';
 import { MCP_CAPTURE_SEARCH_MAX_LIMIT } from './mcp-api';
+import { matchesCaptureQuery, parseCaptureQuery } from './capture-query';
 
+/** Free-text search over an entry, using the shared capture query syntax. */
 export function matchesCaptureSearch(entry: CaptureEntrySummary, query: string): boolean {
   if (!query) return true;
-  const q = query.toLowerCase();
-  return (
-    entry.url.toLowerCase().includes(q) ||
-    entry.host.toLowerCase().includes(q) ||
-    entry.method.toLowerCase().includes(q) ||
-    String(entry.status).includes(q)
-  );
+  return matchesCaptureQuery(entry, parseCaptureQuery(query));
 }
 
 function matchesField(value: string, filter?: string): boolean {
@@ -26,6 +22,7 @@ export function searchCaptures(
 
   const filtered = entries.filter((entry) => {
     if (params.query && !matchesCaptureSearch(entry, params.query)) return false;
+    // Discrete field params predate the query syntax and stay plain substring matches.
     if (!matchesField(entry.url, params.url)) return false;
     if (!matchesField(entry.host, params.host)) return false;
     if (!matchesField(entry.method, params.method)) return false;

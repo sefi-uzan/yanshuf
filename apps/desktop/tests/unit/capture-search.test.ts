@@ -40,6 +40,13 @@ describe('matchesCaptureSearch', () => {
     expect(matchesCaptureSearch(entries[1]!, '401')).toBe(true);
     expect(matchesCaptureSearch(entries[1]!, 'post')).toBe(true);
   });
+
+  it('accepts the shared query syntax, so MCP and the UI filter alike', () => {
+    expect(matchesCaptureSearch(entries[1]!, 'status:4xx')).toBe(true);
+    expect(matchesCaptureSearch(entries[0]!, 'status:4xx')).toBe(false);
+    expect(matchesCaptureSearch(entries[1]!, 'is:error method:POST')).toBe(true);
+    expect(matchesCaptureSearch(entries[0]!, '-host:*.example.com')).toBe(false);
+  });
 });
 
 describe('searchCaptures', () => {
@@ -52,5 +59,14 @@ describe('searchCaptures', () => {
   it('filters by method', () => {
     const result = searchCaptures(entries, { method: 'GET' });
     expect(result.map((e) => e.id)).toEqual(['a']);
+  });
+
+  it('filters by query using the shared syntax', () => {
+    expect(searchCaptures(entries, { query: 'is:error' }).map((e) => e.id)).toEqual(['b']);
+  });
+
+  it('still honours the discrete field params', () => {
+    const result = searchCaptures(entries, { host: 'api.example', status: '401' });
+    expect(result.map((e) => e.id)).toEqual(['b']);
   });
 });

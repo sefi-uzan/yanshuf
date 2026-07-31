@@ -1,12 +1,13 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CaptureEntry, CaptureEntrySummary, CertStatus, IntegrationAggregateStatus, ProxyStatus, ShortcutKey } from '@yanshuf/shared';
-import { SHORTCUTS, hostWithoutPort } from '@yanshuf/shared';
+import { SHORTCUTS, filterCaptures, hostWithoutPort, toggleQueryTerm } from '@yanshuf/shared';
 import { Button, Switch } from '@yanshuf/ui';
 import { cn } from '@yanshuf/ui/lib/utils';
+import { FilterBar } from './FilterBar';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Shield, Bot, Eye, EyeOff, Filter } from 'lucide-react';
+import { Shield, Bot, Filter } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import type { DetailMode } from './detailMode';
@@ -17,8 +18,15 @@ import { useBreakpointNavigation } from '@/features/intercept/useBreakpointNavig
 import { withCertGate } from '@/lib/cert-gate';
 import { clearCapturedRequests, notifyActionFailed, notifyApplied } from '@/lib/toast-actions';
 
+const FILTER_QUERY_KEY = 'yanshuf.capture-filter-query';
+
+function readStoredQuery(): string {
+  return localStorage.getItem(FILTER_QUERY_KEY) ?? '';
+}
+
 interface CaptureViewProps {
-  searchQuery: string;
+  /** Bumped by the cmd+F shortcut to focus the filter input. */
+  focusFilterNonce?: number;
   detailMode: DetailMode;
   composerLoadEntryId?: string | null;
   onComposerLoadHandled?: () => void;
@@ -38,7 +46,7 @@ interface CaptureViewProps {
 }
 
 export function CaptureView({
-  searchQuery,
+  focusFilterNonce = 0,
   detailMode,
   composerLoadEntryId,
   onComposerLoadHandled,
@@ -60,6 +68,36 @@ export function CaptureView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<CaptureEntry | null>(null);
   const [status, setStatus] = useState<ProxyStatus | null>(null);
+  const [query, setQuery] = useState(() => readStoredQuery());
+  const filterInputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => filterCaptures(entries, query), [entries, query]);
+
+  useEffect(() => {
+    localStorage.setItem(FILTER_QUERY_KEY, query);
+  }, [query]);
+
+  useEffect(() => {
+    if (!focusFilterNonce) return;
+    filterInputRef.current?.focus();
+    filterInputRef.current?.select();
+  }, [focusFilterNonce]);
+
+  // A pre-overhaul capture filter arrives once as a view query. Seed it so the user's
+  // old filter shows up in the bar, then clear the carrier so it never reapplies.
+  // The ref keeps StrictMode's double-invoke from issuing two concurrent saves.
+  const migrationRef = useRef(false);
+  useEffect(() => {
+    if (migrationRef.current) return;
+    migrationRef.current = true;
+    void (async () => {
+      const settings = await window.yanshuf.settings.get();
+      if (!settings.migratedViewQuery) return;
+      setQuery((current) => current || settings.migratedViewQuery!);
+      await window.yanshuf.settings.save({ ...settings, migratedViewQuery: undefined });
+      notifyApplied('Filters moved', 'Your capture filter is now an editable filter above the list');
+    })();
+  }, []);
 
   useEffect(() => {
     void window.yanshuf.capture.list().then(setEntries);
@@ -125,15 +163,17 @@ export function CaptureView({
     }
   };
 
-  const addHostToFilterSet = async (host: string) => {
-    const label = hostWithoutPort(host);
-    try {
-      const next = await window.yanshuf.captureFilter.apply({ type: 'addHost', host });
-      setStatus(next);
-      notifyApplied('Filter updated', `Added ${label} to the current filter set`);
-    } catch (err) {
-      notifyActionFailed('add to filter set', err);
-    }
+  // Both act on the view query, so they are instant and reversible.
+  const showOnlyHost = (host: string) => {
+    setQuery((current) =>
+      toggleQueryTerm(current, { field: 'host', value: hostWithoutPort(host), negated: false }),
+    );
+  };
+
+  const hideHost = (host: string) => {
+    setQuery((current) =>
+      toggleQueryTerm(current, { field: 'host', value: hostWithoutPort(host), negated: true }),
+    );
   };
 
   const throttleLabel = (() => {
@@ -158,17 +198,29 @@ export function CaptureView({
       )}
       <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel defaultSize={35} minSize={20}>
-          <SessionList
-            entries={entries}
-            selectedId={selectedId}
-            onSelect={handleSelectEntry}
-            searchQuery={searchQuery}
-            draggable={detailMode !== 'capture'}
-            onAddToComposer={onAddToComposer}
-            onCreateRule={onCreateRule}
-            onCreateMapRemoteRule={onCreateMapRemoteRule}
-            onAddToFilterSet={(host) => void addHostToFilterSet(host)}
-          />
+          <div className="flex h-full min-h-0 flex-col">
+            <FilterBar
+              ref={filterInputRef}
+              query={query}
+              onQueryChange={setQuery}
+              shown={filtered.length}
+              total={entries.length}
+            />
+            <div className="min-h-0 flex-1">
+              <SessionList
+                entries={filtered}
+                totalCount={entries.length}
+                selectedId={selectedId}
+                onSelect={handleSelectEntry}
+                draggable={detailMode !== 'capture'}
+                onAddToComposer={onAddToComposer}
+                onCreateRule={onCreateRule}
+                onCreateMapRemoteRule={onCreateMapRemoteRule}
+                onShowOnlyHost={showOnlyHost}
+                onHideHost={hideHost}
+              />
+            </div>
+          </div>
         </Panel>
         <Separator className="w-1 bg-border transition-colors hover:bg-primary/30" />
         <Panel defaultSize={65} minSize={30}>
@@ -256,20 +308,15 @@ function StatusBar({
         ? 'Certificate installed but not trusted'
         : 'Install root certificate';
 
-  const filter = status?.captureFilter;
-  const FilterIcon = filter?.active
-    ? filter.mode === 'include'
-      ? Eye
-      : EyeOff
-    : Filter;
-  const filterLabel = filter?.active
-    ? `Filtering: ${filter.hiddenCount} hidden`
-    : 'Filters';
-  const filterTitle = filter?.active
-    ? filter.mode === 'include'
-      ? `Showing only ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
-      : `Hiding ${filter.patternCount} pattern(s). ${filter.hiddenCount} proxied request(s) hidden from the list but still forwarded.`
-    : 'Capture filters';
+  // Live filtering shows its own count in the filter bar; this only reports the
+  // never-record list, which is the one thing that permanently drops traffic.
+  const exclusions = status?.recordingExclusions;
+  const exclusionLabel = exclusions?.excluding
+    ? `Not recording: ${exclusions.patternCount}`
+    : 'Recording all';
+  const exclusionTitle = exclusions?.excluding
+    ? `${exclusions.patternCount} host pattern(s) are never recorded. ${exclusions.droppedCount} request(s) dropped since the last change — still forwarded, just not stored.`
+    : 'Every proxied request is recorded. Add exclusions in Settings → Capture.';
 
   return (
     <div className="flex items-center gap-3 border-t bg-muted/30 px-3 py-1.5 text-xs">
@@ -289,20 +336,20 @@ function StatusBar({
           type="button"
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
-            filter?.active
+            exclusions?.excluding
               ? 'border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300'
               : 'border-border bg-background/60 text-muted-foreground',
           )}
           onClick={() => onOpenFilterSettings?.()}
-          title={filterTitle}
+          title={exclusionTitle}
         >
-          <FilterIcon
+          <Filter
             className={cn(
               'h-3.5 w-3.5',
-              filter?.active && 'text-violet-600 dark:text-violet-400',
+              exclusions?.excluding && 'text-violet-600 dark:text-violet-400',
             )}
           />
-          {filterLabel}
+          {exclusionLabel}
         </button>
       </div>
       <div className="flex flex-1 items-center justify-center gap-2">

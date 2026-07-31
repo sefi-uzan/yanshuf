@@ -13,15 +13,15 @@ type FeatureSectionProps = {
 
 const features: FeatureSectionProps[] = [
   {
-    eyebrow: 'Traffic rules',
-    title: 'Mock, rewrite, breakpoint, or map remote.',
+    eyebrow: 'Rules',
+    title: 'Change a request before it reaches the server.',
     description:
-      'Shape traffic with ordered regex rules. Return synthetic responses, modify live exchanges, pause for inspection, or forward requests to another host — first match wins.',
+      'A rule matches a URL with a regular expression. Yanshuf applies the first rule that matches, so the order of the rules is important.',
     bullets: [
-      'Mock responses without hitting the server',
-      'Rewrite live requests and responses',
-      'Breakpoints to inspect, edit, and continue',
-      'Map remote to forward matching traffic elsewhere',
+      'Mock: return your own response and stop the request at Yanshuf.',
+      'Rewrite: change the request or the response, then send it on.',
+      'Breakpoint: hold the request, edit it, and then continue.',
+      'Map Remote: send the request to a different host. The path stays the same.',
     ],
     screenshot: screenshots.trafficRules,
   },
@@ -29,26 +29,26 @@ const features: FeatureSectionProps[] = [
     eyebrow: 'Composer',
     title: 'Build and send HTTP requests.',
     description:
-      'Craft requests from scratch, drag captured traffic from the session list to pre-fill the editor, or start from quick templates. Results land back in the capture list.',
+      'Write a new request in Composer, or drag a captured request into it. Yanshuf adds the result to the capture list.',
     bullets: [
-      'Method, URL, headers, and body editor',
-      'Drag captured requests to pre-fill',
-      'Quick-start GET and POST templates',
-      'Copy as cURL or send in one click',
+      'Set the method, the URL, the headers, and the body.',
+      'Drag a request from the capture list into Composer.',
+      'Start from a GET or a POST template.',
+      'Copy the request as a cURL command.',
     ],
     screenshot: screenshots.composer,
     reversed: true,
   },
   {
-    eyebrow: 'AI integration',
-    title: 'Connect Cursor or Claude Code via MCP.',
+    eyebrow: 'AI Integration',
+    title: 'Connect Cursor and Claude Code to Yanshuf.',
     description:
-      'Install the bundled MCP server, hooks, and skills into your editor from Settings. Your agent can search captures, send requests, and debug traffic without leaving the IDE.',
+      'Yanshuf includes a Model Context Protocol (MCP) server. Install it from Settings, and your AI tool can then read the captures and send requests.',
     bullets: [
-      'One-click MCP server install for Cursor',
-      'Hooks and skills for agent workflows',
-      'Search and inspect live captures from your agent',
-      'Localhost-only API with auth token',
+      'Install the MCP server into your editor with one click.',
+      'Install hooks and skills for your agent at the same time.',
+      'Your agent can search the captures and read a response.',
+      'The API listens on localhost only, and it needs a token.',
     ],
     screenshot: screenshots.aiIntegration,
   },
