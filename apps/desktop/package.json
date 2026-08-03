@@ -62,7 +62,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.5",
     "@yanshuf/eslint-config": "workspace:*",
     "@yanshuf/tailwind-config": "workspace:*",
     "@yanshuf/typescript-config": "workspace:*",
