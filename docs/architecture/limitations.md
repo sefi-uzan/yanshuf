@@ -17,6 +17,20 @@ When Chrome connects through the proxy:
 - **HTTP/2-specific features** (multiplexing, server push) are not preserved inside the proxy pipeline in v1.
 - **WebSockets and SSE** are out of scope for v1.
 
+## Body handling
+
+Bodies stream through untouched and are captured as a side copy, so the client
+keeps the upstream framing (`Content-Length` survives) and the original transfer
+coding. Compressed bodies are inflated only where a human or a rule needs to
+read them:
+
+- for the capture detail view, after the client response has been closed;
+- inline, when a rewrite rule replaces a body or a breakpoint pauses one. Those
+  requests ask upstream for `gzip, deflate, br` so the body is always readable.
+
+Connections to upstream are pooled and kept alive, so capture does not force a
+new TCP and TLS handshake per request.
+
 ## v1.1 follow-up
 
 To support native HTTP/2 MITM:

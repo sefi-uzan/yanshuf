@@ -21,6 +21,13 @@ import {
   extractRequestInfo,
   type PendingCapture,
 } from './capture-store';
+import { ChunkPipe } from './chunk-pipe';
+import {
+  contentEncodingOf,
+  createDecoderStream,
+  decodeBody,
+  DECODABLE_ACCEPT_ENCODING,
+} from './content-encoding';
 import type { CaptureEntry, InterceptRule } from '@yanshuf/shared';
 import {
   headersToRecord,
@@ -31,8 +38,6 @@ import { installProxyConsoleFilter, isBenignProxyError, isExpectedUpstreamError,
 import type { ThrottleController } from './throttle';
 
 type ProxyContext = Parameters<Parameters<Proxy['onRequest']>[0]>[0];
-
-type ThrottleCallback = (error?: Error | null, chunk?: Buffer) => void;
 
 export interface ProxyServerOptions {
   port: number;
@@ -51,6 +56,18 @@ export interface ProxyServerOptions {
 /** Discard pending captures whose connections never completed after this long. */
 const PENDING_SWEEP_INTERVAL_MS = 30_000;
 const PENDING_MAX_AGE_MS = 5 * 60_000;
+
+/**
+ * Without pooling, every request pays for a fresh TCP (and TLS) handshake and
+ * the proxy answers `Connection: close`, which is most of why browsing feels
+ * slower with capture on than without it.
+ */
+const UPSTREAM_AGENT_OPTIONS = {
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: 256,
+  maxFreeSockets: 64,
+};
 
 export class ProxyPortInUseError extends Error {
   port: number;
@@ -115,21 +132,52 @@ function applyRequestRewrite(ctx: ProxyContext, rule: InterceptRule): void {
   }
 }
 
-function applyResponseRewrite(ctx: ProxyContext, rule: InterceptRule): void {
+/** Returns whether the rule replaces the body, not just status or headers. */
+function applyResponseRewrite(ctx: ProxyContext, rule: InterceptRule): boolean {
   const res = ctx.serverToProxyResponse;
-  if (!res) return;
+  if (!res) return false;
   if (rule.response?.status !== undefined) {
     res.statusCode = rule.response.status;
   }
   if (rule.response?.headers) {
     mergeHeaderRecord(res.headers, rule.response.headers);
   }
-  if (rule.response?.body !== undefined && rule.response.body !== '') {
-    installBodyReplacer((handler) => ctx.onResponseData(handler), rule.response.body);
-  }
+  if (rule.response?.body === undefined || rule.response.body === '') return false;
+
+  // Inflate the upstream stream so the capture still holds a readable copy of
+  // what the server sent, and drop the coding so the client does not try to
+  // inflate the plain-text replacement.
+  const decoder = createDecoderStream(contentEncodingOf(headersToRecord(res.headers)));
+  if (decoder) ctx.addResponseFilter(decoder);
+  delete res.headers['content-encoding'];
+  installBodyReplacer((handler) => ctx.onResponseData(handler), rule.response.body);
+  return true;
 }
 
-function applyMapRemote(ctx: ProxyContext, mappedUrl: string): void {
+/**
+ * Run `next` once the pipe has forwarded every chunk, staying synchronous when
+ * nothing is queued so the client stream is not held open for an extra tick.
+ */
+function afterDrain(pipe: ChunkPipe, next: () => void): void {
+  const inFlight = pipe.drain();
+  if (!inFlight) {
+    next();
+    return;
+  }
+  inFlight.then(next, next);
+}
+
+/** Breakpoints edit bodies as text, so only offer codings we can inflate. */
+function limitAcceptEncoding(ctx: ProxyContext): void {
+  const opts = ctx.proxyToServerRequestOptions;
+  if (opts) opts.headers['accept-encoding'] = DECODABLE_ACCEPT_ENCODING;
+}
+
+function applyMapRemote(
+  ctx: ProxyContext,
+  mappedUrl: string,
+  agents: { http: http.Agent; https: https.Agent },
+): void {
   const parsed = new URL(mappedUrl);
   const defaultPort = parsed.protocol === 'https:' ? 443 : 80;
   const port = parsed.port ? Number(parsed.port) : defaultPort;
@@ -145,10 +193,10 @@ function applyMapRemote(ctx: ProxyContext, mappedUrl: string): void {
     opts.headers.host = hostHeader;
     if (parsed.protocol === 'http:') {
       ctx.isSSL = false;
-      opts.agent = http.globalAgent;
+      opts.agent = agents.http;
     } else if (parsed.protocol === 'https:') {
       ctx.isSSL = true;
-      opts.agent = https.globalAgent;
+      opts.agent = agents.https;
     }
   }
 }
@@ -160,6 +208,7 @@ export class ProxyServer extends EventEmitter {
   private running = false;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private hiddenCount = 0;
+  private agents: { http: http.Agent; https: https.Agent } | null = null;
 
   constructor(options: ProxyServerOptions) {
     super();
@@ -194,6 +243,11 @@ export class ProxyServer extends EventEmitter {
       installProxyConsoleFilter();
       const proxy = new Proxy();
       this.proxy = proxy;
+      const agents = {
+        http: new http.Agent(UPSTREAM_AGENT_OPTIONS),
+        https: new https.Agent(UPSTREAM_AGENT_OPTIONS),
+      };
+      this.agents = agents;
 
       proxy.onError((ctx, err, kind) => {
         const id = ctx ? (ctx as { yanshufId?: string }).yanshufId : undefined;
@@ -217,13 +271,11 @@ export class ProxyServer extends EventEmitter {
         }
       });
 
-      proxy.use(Proxy.gunzip);
-
       proxy.onResponse((ctx, callback) => {
         const fullUrl = getFullUrl(ctx);
         const rewriteRule = this.options.interceptEngine.findRewrite(fullUrl, 'response');
         if (rewriteRule) {
-          applyResponseRewrite(ctx, rewriteRule);
+          ctx.responseContentPotentiallyModified = applyResponseRewrite(ctx, rewriteRule);
           callback();
           return;
         }
@@ -234,6 +286,10 @@ export class ProxyServer extends EventEmitter {
           return;
         }
 
+        // Reading a body does not change it. Registering a data handler flags
+        // the response as modified, which drops Content-Length and re-frames
+        // everything as chunked, so clear it again for the pass-through path.
+        ctx.responseContentPotentiallyModified = false;
         callback();
       });
 
@@ -283,19 +339,34 @@ export class ProxyServer extends EventEmitter {
         pending.throttlePassthrough = !breakpointRule && !syncMatch;
         this.attachSessionThrottle(pending);
 
+        const responseRewriteRule = this.options.interceptEngine.findRewrite(
+          info.fullUrl,
+          'response',
+        );
+        const bodyWillBeRead =
+          Boolean(responseRewriteRule?.response?.body) ||
+          Boolean(this.options.interceptEngine.findBreakpoint(info.fullUrl, 'response'));
+        if (bodyWillBeRead) {
+          limitAcceptEncoding(ctx);
+        }
+
+        const throttleFor = () => (pending.throttlePassthrough ? pending.sessionThrottle : undefined);
+        const uploadPipe = new ChunkPipe('upload', throttleFor);
+        const downloadPipe = new ChunkPipe('download', throttleFor);
+
         ctx.onRequestData((_ctx, chunk, cb) => {
           requestBody.push(chunk);
-          void this.pipeThrottledUpload(pending, chunk, cb);
+          uploadPipe.write(chunk, cb);
         });
 
         ctx.onRequestEnd((_ctx, cb) => {
-          cb();
+          afterDrain(uploadPipe, () => cb());
         });
 
         const responseBody = new CappedBuffer(maxBodySize);
         ctx.onResponseData((_ctx, chunk, cb) => {
           responseBody.push(chunk);
-          void this.pipeThrottledDownload(pending, chunk, cb);
+          downloadPipe.write(chunk, cb);
         });
 
         ctx.onResponseEnd((_ctx, cb) => {
@@ -309,9 +380,21 @@ export class ProxyServer extends EventEmitter {
           const status = ctx.serverToProxyResponse?.statusCode ?? 0;
           const responseHeaders = headersToRecord(ctx.serverToProxyResponse?.headers ?? {});
 
-          const entry = buildCaptureEntry(stored, status, responseHeaders, responseBody, maxBodySize);
-          this.recordCapture(stored.url, stored.host, entry);
-          cb();
+          afterDrain(downloadPipe, () => {
+            cb();
+            // Release the client first: inflating and previewing a multi-megabyte
+            // body would otherwise sit between the last chunk and the close.
+            setImmediate(() => {
+              const entry = buildCaptureEntry(
+                stored,
+                status,
+                responseHeaders,
+                responseBody,
+                maxBodySize,
+              );
+              this.recordCapture(stored.url, stored.host, entry);
+            });
+          });
         });
 
         if (breakpointRule) {
@@ -331,12 +414,12 @@ export class ProxyServer extends EventEmitter {
 
         this.applyMapRemoteIfNeeded(ctx, pending, info.fullUrl);
 
-        void (async () => {
-          if (pending.throttlePassthrough) {
-            await this.options.throttle?.applyLatency();
-          }
-          callback();
-        })();
+        const throttle = this.options.throttle;
+        if (pending.throttlePassthrough && throttle?.isEnabled()) {
+          void throttle.applyLatency().then(() => callback());
+          return;
+        }
+        callback();
       });
 
       proxy.listen(
@@ -344,6 +427,9 @@ export class ProxyServer extends EventEmitter {
           port: this.options.port,
           host: this.options.host,
           sslCaDir: this.options.sslCaDir,
+          keepAlive: true,
+          httpAgent: agents.http,
+          httpsAgent: agents.https,
         },
         () => {
           this.running = true;
@@ -356,6 +442,9 @@ export class ProxyServer extends EventEmitter {
         if (!this.running) {
           uninstallProxyConsoleFilter();
           this.proxy = null;
+          agents.http.destroy();
+          agents.https.destroy();
+          this.agents = null;
           reject(err);
         }
       });
@@ -464,10 +553,12 @@ export class ProxyServer extends EventEmitter {
         pending.throttlePassthrough = true;
         this.attachSessionThrottle(pending);
 
-        void (async () => {
-          await this.options.throttle?.applyLatency();
-          callback();
-        })();
+        const throttle = this.options.throttle;
+        if (throttle?.isEnabled()) {
+          void throttle.applyLatency().then(() => callback());
+          return;
+        }
+        callback();
       })().catch((err) => {
         this.pending.delete(captureId);
         this.emit('notify', err instanceof Error ? err.message : 'Breakpoint error');
@@ -494,7 +585,8 @@ export class ProxyServer extends EventEmitter {
 
     serverRes.once('end', () => {
       void (async () => {
-        const body = Buffer.concat(chunks).toString('utf8');
+        const raw = Buffer.concat(chunks);
+        const body = (decodeBody(raw, contentEncodingOf(headers)) ?? raw).toString('utf8');
         const breakpointId = uuidv4();
         const snapshot = {
           id: breakpointId,
@@ -556,9 +648,11 @@ export class ProxyServer extends EventEmitter {
         const outStatus = mods?.status ?? status;
         const outHeaders = { ...headers, ...mods?.headers };
         const outBody = mods?.body ?? body;
-        if (!outHeaders['content-length']) {
-          outHeaders['content-length'] = String(Buffer.byteLength(outBody, 'utf8'));
-        }
+        // We send the decoded body in one piece, so the upstream coding and
+        // framing headers no longer describe what the client receives.
+        delete outHeaders['content-encoding'];
+        delete outHeaders['transfer-encoding'];
+        outHeaders['content-length'] = String(Buffer.byteLength(outBody, 'utf8'));
 
         ctx.proxyToClientResponse.writeHead(outStatus, outHeaders);
         ctx.proxyToClientResponse.end(outBody);
@@ -618,45 +712,15 @@ export class ProxyServer extends EventEmitter {
     pending.sessionThrottle = this.options.throttle?.createSessionLimiters();
   }
 
-  private async pipeThrottledUpload(
-    pending: PendingCapture,
-    chunk: Buffer,
-    cb: ThrottleCallback,
-  ): Promise<void> {
-    try {
-      if (pending.throttlePassthrough) {
-        await pending.sessionThrottle?.throttleUpload(chunk);
-      }
-      cb(null, chunk);
-    } catch (err) {
-      cb(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
-  private async pipeThrottledDownload(
-    pending: PendingCapture,
-    chunk: Buffer,
-    cb: ThrottleCallback,
-  ): Promise<void> {
-    try {
-      if (pending.throttlePassthrough) {
-        await pending.sessionThrottle?.throttleDownload(chunk);
-      }
-      cb(null, chunk);
-    } catch (err) {
-      cb(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
   private applyMapRemoteIfNeeded(
     ctx: ProxyContext,
     pending: PendingCapture,
     originalUrl: string,
   ): void {
     const mapRule = this.options.mapRemoteEngine.findMatch(originalUrl);
-    if (!mapRule) return;
+    if (!mapRule || !this.agents) return;
     const mappedUrl = this.options.mapRemoteEngine.applyMapping(originalUrl, mapRule);
-    applyMapRemote(ctx, mappedUrl);
+    applyMapRemote(ctx, mappedUrl, this.agents);
     pending.matchedMapRemoteRuleId = mapRule.id;
     pending.mappedToUrl = mappedUrl;
   }
@@ -727,6 +791,9 @@ export class ProxyServer extends EventEmitter {
       }
       this.proxy.close();
       this.proxy = null;
+      this.agents?.http.destroy();
+      this.agents?.https.destroy();
+      this.agents = null;
       this.running = false;
       this.pending.clear();
       this.hiddenCount = 0;

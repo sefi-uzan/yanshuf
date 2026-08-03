@@ -1,5 +1,6 @@
 import type { CaptureEntry, CaptureEntrySummary, InterceptPhase } from '@yanshuf/shared';
 import { bodyPreview, headersToRecord, parseUrlParts } from '@yanshuf/shared';
+import { contentEncodingOf, decodeBody } from './content-encoding';
 import type { SessionThrottle } from './throttle';
 
 export class CaptureStore {
@@ -111,14 +112,30 @@ export interface PendingCapture {
   sessionThrottle?: SessionThrottle;
 }
 
+/**
+ * Bodies are captured exactly as they travelled the wire, so a compressed one
+ * has to be inflated before it can be previewed. When retention truncated the
+ * body it only decodes partially, and the wire size stays the honest number.
+ */
+function decodeForDisplay(
+  source: BodySource,
+  headers: Record<string, string>,
+): { bytes: Buffer; size: number } {
+  const bytes = source.concat();
+  const decoded = decodeBody(bytes, contentEncodingOf(headers));
+  if (!decoded) return { bytes, size: source.total };
+  const truncated = bytes.length < source.total;
+  return { bytes: decoded, size: truncated ? source.total : decoded.length };
+}
+
 export function buildFailedCaptureEntry(
   pending: PendingCapture,
   status: number,
   errorMessage: string,
   maxBodySize: number,
 ): CaptureEntry {
-  const requestBytes = pending.requestBody.concat();
-  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
+  const request = decodeForDisplay(pending.requestBody, pending.requestHeaders);
+  const reqBodyRef = bodyPreview(request.bytes, maxBodySize, request.size);
   const durationMs = Date.now() - pending.startedAt;
 
   return {
@@ -136,7 +153,7 @@ export function buildFailedCaptureEntry(
     matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
     mappedToUrl: pending.mappedToUrl,
     fromComposer: pending.fromComposer,
-    requestBodySize: pending.requestBody.total,
+    requestBodySize: request.size,
     responseBodySize: 0,
     client: {
       method: pending.method,
@@ -159,10 +176,10 @@ export function buildCaptureEntry(
   responseBody: BodySource,
   maxBodySize: number,
 ): CaptureEntry {
-  const requestBytes = pending.requestBody.concat();
-  const responseBytes = responseBody.concat();
-  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
-  const resBodyRef = bodyPreview(responseBytes, maxBodySize, responseBody.total);
+  const request = decodeForDisplay(pending.requestBody, pending.requestHeaders);
+  const response = decodeForDisplay(responseBody, responseHeaders);
+  const reqBodyRef = bodyPreview(request.bytes, maxBodySize, request.size);
+  const resBodyRef = bodyPreview(response.bytes, maxBodySize, response.size);
   const durationMs = Date.now() - pending.startedAt;
 
   return {
@@ -180,8 +197,8 @@ export function buildCaptureEntry(
     matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
     mappedToUrl: pending.mappedToUrl,
     fromComposer: pending.fromComposer,
-    requestBodySize: pending.requestBody.total,
-    responseBodySize: responseBody.total,
+    requestBodySize: request.size,
+    responseBodySize: response.size,
     client: {
       method: pending.method,
       url: pending.url,
@@ -221,8 +238,8 @@ export function buildBreakpointCaptureEntry(
   },
   maxBodySize: number,
 ): CaptureEntry {
-  const requestBytes = pending.requestBody.concat();
-  const reqBodyRef = bodyPreview(requestBytes, maxBodySize, pending.requestBody.total);
+  const request = decodeForDisplay(pending.requestBody, pending.requestHeaders);
+  const reqBodyRef = bodyPreview(request.bytes, maxBodySize, request.size);
 
   let status = 0;
   let responseBodySize = 0;
@@ -254,7 +271,7 @@ export function buildBreakpointCaptureEntry(
     matchedMapRemoteRuleId: pending.matchedMapRemoteRuleId,
     mappedToUrl: pending.mappedToUrl,
     fromComposer: pending.fromComposer,
-    requestBodySize: pending.requestBody.total,
+    requestBodySize: request.size,
     responseBodySize,
     awaitingBreakpoint: {
       breakpointId: snapshot.breakpointId,
