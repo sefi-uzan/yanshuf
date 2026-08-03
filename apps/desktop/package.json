@@ -41,7 +41,7 @@
     "react-resizable-panels": "^4.11.2",
     "shiki": "^4.2.0",
     "sonner": "^2.0.7",
-    "undici": "^8.5.0",
+    "undici": "^8.9.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
