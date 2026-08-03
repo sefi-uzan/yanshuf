@@ -8,16 +8,9 @@ updates:
     open-pull-requests-limit: 10
     versioning-strategy: increase
     groups:
-      production-dependencies:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
-      development-dependencies:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
+      all-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
