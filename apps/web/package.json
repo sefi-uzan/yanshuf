@@ -23,7 +23,7 @@
     "@yanshuf/eslint-config": "workspace:*",
     "@yanshuf/tailwind-config": "workspace:*",
     "@yanshuf/typescript-config": "workspace:*",
-    "autoprefixer": "^10.5.0",
+    "autoprefixer": "^10.5.4",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.3.3",
     "postcss": "^8.5.18",
