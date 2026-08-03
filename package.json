@@ -11,7 +11,8 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e --filter=@yanshuf/desktop"
+    "test:e2e": "turbo run test:e2e --filter=@yanshuf/desktop",
+    "audit": "pnpm audit --prod --audit-level=high"
   },
   "devDependencies": {
     "turbo": "^2.5.0"

@@ -4,6 +4,8 @@ packages:
 # electron-forge requires a hoisted node_modules. pnpm 11 no longer reads pnpm
 # settings from .npmrc, so this has to live here.
 nodeLinker: hoisted
+# @electron/rebuild pulls @electron/node-gyp from a git tarball.
+blockExoticSubdeps: false
 allowBuilds:
   electron-winstaller: true
   esbuild: true
@@ -11,3 +13,11 @@ allowBuilds:
   macos-alias: true
   sharp: true
   unrs-resolver: true
+# Pin patched transitive versions until upstreams (next, mcp sdk, http-mitm-proxy) bump.
+overrides:
+  fast-uri: ">=3.1.4"
+  hono: ">=4.12.27"
+  "@hono/node-server": ">=2.0.5"
+  "postcss@<8.5.18": "8.5.18"
+  sharp: ">=0.35.0"
+  "uuid@<11.1.1": "11.1.1"

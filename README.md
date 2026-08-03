@@ -81,6 +81,7 @@ pnpm start
 | `pnpm lint` | Lint all packages |
 | `pnpm test` | Run unit tests |
 | `pnpm test:e2e` | Run Playwright E2E tests (desktop) |
+| `pnpm run audit` | Fail on high/critical production advisories |
 | `pnpm make` | Build a local `.dmg` (desktop) |
 
 Run a task for a single package:
@@ -143,7 +144,7 @@ Contributions are welcome — bug reports, feature ideas, and pull requests.
 
 Before opening a PR:
 
-1. Run `pnpm typecheck`, `pnpm lint`, and `pnpm test`.
+1. Run `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm run audit`.
 2. Keep changes focused; match existing code style.
 3. Describe what changed and why in the PR.
 
