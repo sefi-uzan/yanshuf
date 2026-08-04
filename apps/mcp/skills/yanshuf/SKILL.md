@@ -37,6 +37,18 @@ Yanshuf is a local macOS proxy debugger. Use MCP tools prefixed with `yanshuf_`.
 | `yanshuf_list_pending_breakpoints` / `yanshuf_continue_breakpoint` / `yanshuf_abort_breakpoint` | Breakpoint control |
 | `yanshuf_wait_for_breakpoint` | Block until breakpoint hit |
 
+## Matching URLs in rules
+
+Every rule tool takes `url` plus an optional `matchMode`:
+
+| `matchMode` | Meaning |
+|-------------|---------|
+| `prefix` (default) | Host must be equal; the path must start with the given path. `www.cursor.com/dashboard` matches `/dashboard/usage?tab=all`. A host-only `url` matches every path on that host. |
+| `exact` | The whole URL must match, query string included. |
+| `regex` | Unanchored regular expression tested against the full URL. Use `^`/`$` to anchor. |
+
+For `prefix` and `exact` the scheme is optional and a trailing slash is ignored, so a URL pasted from a capture works as-is with no escaping. `urlRegex` is still accepted as a deprecated alias for `url` with `matchMode: "regex"`.
+
 ## Workflows
 
 Detailed recipes: read files in this skill folder when needed.
@@ -70,7 +82,7 @@ yanshuf_list_mock_rules → disable unrelated rules → yanshuf_save_mock_rule �
 ### Map Remote
 
 ```
-yanshuf_list_map_remote_rules → yanshuf_save_map_remote_rule(urlRegex, host) → trigger traffic → yanshuf_search_captures → verify mappedToUrl on summary
+yanshuf_list_map_remote_rules → yanshuf_save_map_remote_rule(url, host) → trigger traffic → yanshuf_search_captures → verify mappedToUrl on summary
 ```
 
 ### Breakpoint

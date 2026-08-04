@@ -4,7 +4,7 @@ import {
   FloatingLabelSelect,
   FloatingLabelTextarea,
 } from '@yanshuf/ui';
-import { CopyUrlButton } from '@/components/CopyUrlButton';
+import { RuleMatchField } from './RuleMatchField';
 
 interface InterceptRuleEditorProps {
   selected: InterceptRule;
@@ -32,17 +32,7 @@ export function InterceptRuleEditor({
         value={selected.name}
         onChange={(e) => onUpdate({ name: e.target.value })}
       />
-      <div className="flex w-full items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <FloatingLabelInput
-            className="font-mono"
-            label="URL regex"
-            value={selected.match.urlRegex ?? ''}
-            onChange={(e) => onUpdate({ match: { urlRegex: e.target.value } })}
-          />
-        </div>
-        <CopyUrlButton value={selected.match.urlRegex ?? ''} fromRegex title="Copy match URL" />
-      </div>
+      <RuleMatchField match={selected.match} onChange={(match) => onUpdate({ match })} />
       <FloatingLabelSelect
         label="Phase"
         value={selected.phase}

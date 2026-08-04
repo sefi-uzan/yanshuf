@@ -8,6 +8,7 @@ import type {
   MapRemoteRule,
   ThrottleSetPatch,
   ThrottleSettings,
+  UrlMatchMode,
 } from './types';
 
 export const MCP_DEFAULT_PORT = 9473;
@@ -68,11 +69,21 @@ export interface ComposerSendBody {
   captureId?: string;
 }
 
-export interface MockRuleSaveBody {
+/**
+ * Rule save bodies share the URL match fields. `urlRegex` stays accepted so
+ * existing agent calls keep working; it is treated as `url` in `regex` mode.
+ */
+export interface RuleMatchSaveFields {
+  url?: string;
+  matchMode?: UrlMatchMode;
+  /** @deprecated Pass `url` with `matchMode: 'regex'` instead. */
+  urlRegex?: string;
+}
+
+export interface MockRuleSaveBody extends RuleMatchSaveFields {
   id?: string;
   name?: string;
   enabled?: boolean;
-  urlRegex?: string;
   status?: number;
   headers?: Record<string, string>;
   body?: string;
@@ -80,24 +91,22 @@ export interface MockRuleSaveBody {
   captureId?: string;
 }
 
-export interface InterceptRuleSaveBody {
+export interface InterceptRuleSaveBody extends RuleMatchSaveFields {
   id?: string;
   name?: string;
   enabled?: boolean;
   mode: 'rewrite' | 'breakpoint';
   phase: 'request' | 'response';
-  urlRegex?: string;
   headers?: Record<string, string>;
   body?: string;
   status?: number;
   captureId?: string;
 }
 
-export interface MapRemoteRuleSaveBody {
+export interface MapRemoteRuleSaveBody extends RuleMatchSaveFields {
   id?: string;
   name?: string;
   enabled?: boolean;
-  urlRegex?: string;
   host?: string;
   port?: number;
   protocol?: 'http' | 'https';

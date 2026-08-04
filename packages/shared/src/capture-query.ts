@@ -16,19 +16,8 @@ import type { CaptureEntrySummary } from './types';
 export const QUERY_FIELDS = ['text', 'host', 'url', 'method', 'status', 'is'] as const;
 export type QueryField = (typeof QUERY_FIELDS)[number];
 
-export const IS_PREDICATES = [
-  'error',
-  'slow',
-  'mocked',
-  'mapped',
-  'composed',
-  'paused',
-  'tls',
-] as const;
+export const IS_PREDICATES = ['error', 'mocked', 'mapped', 'composed', 'paused', 'tls'] as const;
 export type IsPredicate = (typeof IS_PREDICATES)[number];
-
-/** Requests slower than this are `is:slow`. */
-export const SLOW_REQUEST_MS = 1000;
 
 export interface QueryTerm {
   field: QueryField;
@@ -141,8 +130,6 @@ function matchesPredicate(entry: CaptureEntrySummary, predicate: string): boolea
   switch (predicate.toLowerCase() as IsPredicate) {
     case 'error':
       return entry.status >= 400;
-    case 'slow':
-      return entry.durationMs > SLOW_REQUEST_MS;
     case 'mocked':
       return Boolean(entry.matchedRuleId);
     case 'mapped':
@@ -243,19 +230,23 @@ export function toggleQueryTerm(query: string, term: QueryTerm): string {
   return formatCaptureQuery({ terms: [...parsed.terms, term] });
 }
 
-/**
- * Replace every term for a field with a single value, for dropdowns where only
- * one choice can be active at a time.
- */
-export function setQueryField(query: string, field: QueryField, value: string | null): string {
+/** Drop every positive term for a field, leaving other fields and negations alone. */
+export function clearQueryField(query: string, field: QueryField): string {
   const parsed = parseCaptureQuery(query);
-  const kept = parsed.terms.filter((term) => term.field !== field || term.negated);
-  const terms = value ? [...kept, { field, value, negated: false }] : kept;
-  return formatCaptureQuery({ terms });
+  return formatCaptureQuery({
+    terms: parsed.terms.filter((term) => term.field !== field || term.negated),
+  });
 }
 
 /** The single active positive value for a field, or null when unset. */
 export function getQueryField(query: CaptureQuery, field: QueryField): string | null {
   const term = query.terms.find((candidate) => candidate.field === field && !candidate.negated);
   return term ? term.value : null;
+}
+
+/** Every positive value for a field, which is the OR set a multi-select shows as checked. */
+export function getQueryFieldValues(query: CaptureQuery, field: QueryField): string[] {
+  return query.terms
+    .filter((candidate) => candidate.field === field && !candidate.negated)
+    .map((candidate) => candidate.value);
 }

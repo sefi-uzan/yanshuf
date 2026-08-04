@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { CaptureEntrySummary } from '@yanshuf/shared';
 import {
+  clearQueryField,
   filterCaptures,
   formatCaptureQuery,
   getQueryField,
+  getQueryFieldValues,
   hasQueryTerm,
   matchesCaptureQuery,
   parseCaptureQuery,
-  setQueryField,
   toggleQueryTerm,
 } from '@yanshuf/shared';
 
@@ -105,8 +106,6 @@ describe('matchesCaptureQuery', () => {
   it('evaluates is: predicates', () => {
     expect(matches(entry({ status: 500 }), 'is:error')).toBe(true);
     expect(matches(entry({ status: 200 }), 'is:error')).toBe(false);
-    expect(matches(entry({ durationMs: 5000 }), 'is:slow')).toBe(true);
-    expect(matches(entry({ durationMs: 20 }), 'is:slow')).toBe(false);
     expect(matches(entry({ matchedRuleId: 'r1' }), 'is:mocked')).toBe(true);
     expect(matches(entry({ matchedMapRemoteRuleId: 'm1' }), 'is:mapped')).toBe(true);
     expect(matches(entry({ fromComposer: true }), 'is:composed')).toBe(true);
@@ -155,8 +154,8 @@ describe('query editing helpers', () => {
   });
 
   it('keeps other terms when toggling', () => {
-    const term = { field: 'is' as const, value: 'slow', negated: false };
-    expect(toggleQueryTerm('host:api.example.com', term)).toBe('host:api.example.com is:slow');
+    const term = { field: 'is' as const, value: 'mocked', negated: false };
+    expect(toggleQueryTerm('host:api.example.com', term)).toBe('host:api.example.com is:mocked');
   });
 
   it('treats a negated term as distinct from its positive form', () => {
@@ -164,18 +163,37 @@ describe('query editing helpers', () => {
     expect(hasQueryTerm(parseCaptureQuery('-host:x.com'), positive)).toBe(false);
   });
 
-  it('replaces the active value when setting a single-choice field', () => {
-    expect(setQueryField('method:GET', 'method', 'POST')).toBe('method:POST');
-    expect(setQueryField('method:GET is:error', 'method', 'POST')).toBe('is:error method:POST');
-  });
-
-  it('clears a field when passed null, leaving negated terms alone', () => {
-    expect(setQueryField('method:GET is:error', 'method', null)).toBe('is:error');
-    expect(setQueryField('-method:GET', 'method', null)).toBe('-method:GET');
-  });
-
   it('reads back the active value for a field', () => {
     expect(getQueryField(parseCaptureQuery('status:4xx'), 'status')).toBe('4xx');
     expect(getQueryField(parseCaptureQuery('is:error'), 'status')).toBe(null);
+  });
+
+  it('reads back every positive value for a field, ignoring negations', () => {
+    const query = parseCaptureQuery('method:GET method:POST -method:HEAD status:4xx');
+    expect(getQueryFieldValues(query, 'method')).toEqual(['GET', 'POST']);
+    expect(getQueryFieldValues(query, 'status')).toEqual(['4xx']);
+    expect(getQueryFieldValues(query, 'host')).toEqual([]);
+  });
+
+  it('ORs a second value into the same field instead of replacing it', () => {
+    const added = toggleQueryTerm('method:GET', { field: 'method', value: 'POST', negated: false });
+    expect(added).toBe('method:GET method:POST');
+    expect(getQueryFieldValues(parseCaptureQuery(added), 'method')).toEqual(['GET', 'POST']);
+  });
+
+  it('leaves the other value in place when untoggling one of two', () => {
+    const remaining = toggleQueryTerm('method:GET method:POST', {
+      field: 'method',
+      value: 'GET',
+      negated: false,
+    });
+    expect(remaining).toBe('method:POST');
+  });
+
+  it('clears every positive value for a field, keeping other fields and negations', () => {
+    expect(clearQueryField('method:GET method:POST is:error -method:HEAD', 'method')).toBe(
+      'is:error -method:HEAD',
+    );
+    expect(clearQueryField('is:error', 'method')).toBe('is:error');
   });
 });

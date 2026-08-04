@@ -31,6 +31,7 @@ export default function App() {
     useState<IntegrationClient | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [proxyStatusNonce, setProxyStatusNonce] = useState(0);
+  const [entryCount, setEntryCount] = useState(0);
   const firstRunChecked = useRef(false);
   const pendingTourRef = useRef(false);
   const tourDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,6 +225,7 @@ export default function App() {
         detailMode={detailMode}
         onToggleDetailMode={toggleDetailMode}
         onOpenSettings={openSettings}
+        entryCount={entryCount}
       />
       <main className="min-h-0 flex-1">
         <CaptureView
@@ -260,6 +262,7 @@ export default function App() {
           }
           onOpenFilterSettings={openFilterSettings}
           proxyStatusNonce={proxyStatusNonce}
+          onEntryCountChange={setEntryCount}
         />
       </main>
       <CertOnboarding

@@ -20,6 +20,8 @@ import type {
   CaptureWaitParams,
   YanshufStatus,
   McpApiHandlers,
+  RuleMatch,
+  RuleMatchSaveFields,
   ThrottleSetPatch,
 } from '@yanshuf/shared';
 import {
@@ -59,6 +61,27 @@ export interface McpHandlerDeps {
   broadcastCaptureUpdate: (immediate?: boolean) => void;
   tagComposerCaptures: (beforeIds: Set<string>, req: ComposerRequest) => void;
   mergeAndApplyThrottle: (patch: ThrottleSetPatch | null) => void;
+}
+
+/**
+ * `urlRegex` is the pre-match-mode parameter name, still honoured so agent calls
+ * written against the old tool schema keep working. Returns undefined when the
+ * body carries no URL at all, meaning "leave the existing match alone".
+ */
+function readRuleMatch(body: RuleMatchSaveFields): RuleMatch | undefined {
+  if (body.url !== undefined) return { pattern: body.url, mode: body.matchMode ?? 'prefix' };
+  if (body.urlRegex !== undefined) {
+    return { pattern: body.urlRegex, mode: body.matchMode ?? 'regex' };
+  }
+  return undefined;
+}
+
+function requireRuleMatch(body: RuleMatchSaveFields): RuleMatch {
+  const match = readRuleMatch(body);
+  if (!match?.pattern) {
+    throw new Error('url is required when captureId is not provided');
+  }
+  return match;
 }
 
 async function isCertTrusted(certManager: CertificateManager): Promise<boolean> {
@@ -208,13 +231,12 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         if (!entry) throw new Error(`Capture not found: ${body.captureId}`);
         rule = captureToAutoResponderRule(entry, rules.length, body.id);
       } else {
-        if (!body.urlRegex) throw new Error('urlRegex is required when captureId is not provided');
         rule = {
           id: body.id ?? uuidv4(),
           name: body.name ?? 'Mock rule',
           enabled: body.enabled ?? true,
           order: rules.length,
-          match: { urlRegex: body.urlRegex },
+          match: requireRuleMatch(body),
           response: {
             status: body.status ?? 200,
             headers: body.headers ?? { 'content-type': 'application/json' },
@@ -226,7 +248,8 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
 
       if (body.name !== undefined) rule.name = body.name;
       if (body.enabled !== undefined) rule.enabled = body.enabled;
-      if (body.urlRegex !== undefined) rule.match.urlRegex = body.urlRegex;
+      const mockMatch = readRuleMatch(body);
+      if (mockMatch) rule.match = mockMatch;
       if (body.status !== undefined) rule.response.status = body.status;
       if (body.headers !== undefined) rule.response.headers = body.headers;
       if (body.body !== undefined) rule.response.body = { type: 'inline', content: body.body };
@@ -276,12 +299,11 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
           order: rules.length,
           mode: body.mode,
           phase: body.phase,
-          match: { urlRegex: body.urlRegex ?? entry.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') },
+          match: readRuleMatch(body) ?? { pattern: entry.url, mode: 'exact' },
           request: body.phase === 'request' ? mods : undefined,
           response: body.phase === 'response' ? mods : undefined,
         };
       } else {
-        if (!body.urlRegex) throw new Error('urlRegex is required when captureId is not provided');
         const mods: InterceptModifications = {
           headers: body.headers,
           body: body.body,
@@ -294,7 +316,7 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
           order: rules.length,
           mode: body.mode,
           phase: body.phase,
-          match: { urlRegex: body.urlRegex },
+          match: requireRuleMatch(body),
           request: body.phase === 'request' ? mods : undefined,
           response: body.phase === 'response' ? mods : undefined,
         };
@@ -333,14 +355,13 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
         if (!entry) throw new Error(`Capture not found: ${body.captureId}`);
         rule = captureToMapRemoteRule(entry, rules.length, body.id);
       } else {
-        if (!body.urlRegex) throw new Error('urlRegex is required when captureId is not provided');
         if (!body.host) throw new Error('host is required when captureId is not provided');
         rule = {
           id: body.id ?? uuidv4(),
           name: body.name ?? 'Map Remote rule',
           enabled: body.enabled ?? true,
           order: rules.length,
-          match: { urlRegex: body.urlRegex },
+          match: requireRuleMatch(body),
           mapTo: {
             host: body.host,
             port: body.port,
@@ -351,7 +372,8 @@ export function createMcpHandlers(deps: McpHandlerDeps): McpApiHandlers {
 
       if (body.name !== undefined) rule.name = body.name;
       if (body.enabled !== undefined) rule.enabled = body.enabled;
-      if (body.urlRegex !== undefined) rule.match.urlRegex = body.urlRegex;
+      const mapRemoteMatch = readRuleMatch(body);
+      if (mapRemoteMatch) rule.match = mapRemoteMatch;
       if (body.host !== undefined) rule.mapTo.host = body.host;
       if (body.port !== undefined) rule.mapTo.port = body.port;
       if (body.protocol !== undefined) rule.mapTo.protocol = body.protocol;

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CaptureEntry } from '@yanshuf/shared';
-import {
-  captureToAutoResponderRule,
-  escapeRegex,
-} from '@yanshuf/shared';
+import { captureToAutoResponderRule, captureToMapRemoteRule } from '@yanshuf/shared';
 
 const sampleEntry: CaptureEntry = {
   id: 'entry-1',
@@ -35,21 +32,28 @@ const sampleEntry: CaptureEntry = {
   },
 };
 
-describe('escapeRegex', () => {
-  it('escapes regex metacharacters', () => {
-    expect(escapeRegex('https://a.com/x?y=1')).toBe('https://a\\.com/x\\?y=1');
-  });
-});
-
 describe('captureToAutoResponderRule', () => {
   it('builds a rule from a captured exchange', () => {
     const rule = captureToAutoResponderRule(sampleEntry, 3);
 
     expect(rule.order).toBe(3);
     expect(rule.name).toBe('api.example.com');
-    expect(rule.match.urlRegex).toBe('https://api\\.example\\.com/v1/users\\?id=1');
+    // The captured URL is stored verbatim; exact mode means no escaping is needed.
+    expect(rule.match).toEqual({
+      pattern: 'https://api.example.com/v1/users?id=1',
+      mode: 'exact',
+    });
     expect(rule.response.status).toBe(200);
     expect(rule.response.headers).toEqual({ 'content-type': 'application/json' });
     expect(rule.response.body).toEqual({ type: 'inline', content: '{"users":[1,2]}' });
+  });
+});
+
+describe('captureToMapRemoteRule', () => {
+  it('matches the whole host so every path is redirected', () => {
+    const rule = captureToMapRemoteRule(sampleEntry, 0);
+
+    expect(rule.match).toEqual({ pattern: 'api.example.com', mode: 'prefix' });
+    expect(rule.mapTo).toEqual({ host: '' });
   });
 });

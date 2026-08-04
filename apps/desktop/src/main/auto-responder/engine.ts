@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import type { AutoResponderRule } from '@yanshuf/shared';
-import { matchesUrlRegex } from '@yanshuf/shared';
+import { matchesRuleUrl } from '@yanshuf/shared';
 
 export class AutoResponderEngine {
   private rules: AutoResponderRule[] = [];
@@ -22,7 +22,7 @@ export class AutoResponderEngine {
   }
 
   private matchesUrl(rule: AutoResponderRule, url: string): boolean {
-    return matchesUrlRegex(rule.match.urlRegex, url);
+    return matchesRuleUrl(rule.match, url);
   }
 
   async buildResponse(rule: AutoResponderRule): Promise<{

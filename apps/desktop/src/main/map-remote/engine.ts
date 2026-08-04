@@ -1,4 +1,4 @@
-import { applyMapRemoteUrl, matchesUrlRegex } from '@yanshuf/shared';
+import { applyMapRemoteUrl, matchesRuleUrl } from '@yanshuf/shared';
 import type { MapRemoteRule } from '@yanshuf/shared';
 
 export class MapRemoteEngine {
@@ -15,7 +15,7 @@ export class MapRemoteEngine {
   findMatch(url: string): MapRemoteRule | undefined {
     for (const rule of this.rules) {
       if (!rule.enabled) continue;
-      if (matchesUrlRegex(rule.match.urlRegex, url)) return rule;
+      if (matchesRuleUrl(rule.match, url)) return rule;
     }
     return undefined;
   }

@@ -8,6 +8,26 @@ function textResult(data: unknown) {
   };
 }
 
+/** Shared by every rule tool so match semantics are described in exactly one place. */
+const ruleMatchSchema = {
+  url: z
+    .string()
+    .optional()
+    .describe(
+      'URL to match. Interpreted according to matchMode. The scheme is optional for exact and prefix.',
+    ),
+  matchMode: z
+    .enum(['regex', 'exact', 'prefix'])
+    .optional()
+    .describe(
+      "How to match `url`. 'prefix' (default) matches the host plus everything under the given path, 'exact' requires the whole URL including query, 'regex' tests an unanchored regular expression against the full URL.",
+    ),
+  urlRegex: z
+    .string()
+    .optional()
+    .describe('Deprecated. Same as passing url with matchMode "regex".'),
+};
+
 export function registerTools(server: McpServer, client: YanshufApiClient): void {
   server.registerTool(
     'yanshuf_status',
@@ -150,7 +170,7 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
         captureId: z.string().optional(),
         name: z.string().optional(),
         enabled: z.boolean().optional(),
-        urlRegex: z.string().optional(),
+        ...ruleMatchSchema,
         status: z.number().optional(),
         headers: z.record(z.string()).optional(),
         body: z.string().optional(),
@@ -190,7 +210,7 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
         enabled: z.boolean().optional(),
         mode: z.enum(['rewrite', 'breakpoint']),
         phase: z.enum(['request', 'response']),
-        urlRegex: z.string().optional(),
+        ...ruleMatchSchema,
         headers: z.record(z.string()).optional(),
         body: z.string().optional(),
         status: z.number().optional(),
@@ -227,7 +247,7 @@ export function registerTools(server: McpServer, client: YanshufApiClient): void
         captureId: z.string().optional(),
         name: z.string().optional(),
         enabled: z.boolean().optional(),
-        urlRegex: z.string().optional(),
+        ...ruleMatchSchema,
         host: z.string().optional(),
         port: z.number().optional(),
         protocol: z.enum(['http', 'https']).optional(),

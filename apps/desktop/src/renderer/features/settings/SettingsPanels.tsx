@@ -3,7 +3,6 @@ import type { AppSettings, CertStatus, IntegrationClient } from '@yanshuf/shared
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   Tabs,
@@ -89,16 +88,18 @@ export function SettingsPanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Fixed height so switching tabs never resizes the dialog — short tabs keep the
           same frame and tall ones scroll in the content column below. */}
-      <DialogContent className="flex h-[min(36rem,calc(100vh-4rem))] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex h-[min(36rem,calc(100vh-4rem))] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+      >
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as SettingsTab)}
           className="flex min-h-0 flex-1"
         >
           <aside className="flex w-44 shrink-0 flex-col border-r bg-muted/30">
-            <DialogHeader className="space-y-0.5 border-b px-3 py-3 text-left">
+            <DialogHeader className="border-b px-3 py-3 text-left">
               <DialogTitle className="text-sm font-semibold">Settings</DialogTitle>
-              <DialogDescription className="text-xs">Changes apply as you make them</DialogDescription>
             </DialogHeader>
             <TabsList className="flex h-auto flex-col items-stretch justify-start gap-0.5 bg-transparent p-2">
               {NAV_ITEMS.map(({ value, label, icon: Icon }) => (

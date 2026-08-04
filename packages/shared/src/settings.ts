@@ -1,8 +1,10 @@
 import {
+  DEFAULT_RECORDING_SCOPE,
   DEFAULT_SETTINGS,
   DEFAULT_THROTTLE,
   type AppSettings,
   type LegacyCaptureFilterSettings,
+  type RecordingScope,
 } from './types';
 import { formatCaptureQuery, type QueryTerm } from './capture-query';
 
@@ -12,8 +14,22 @@ type StoredSettings = Partial<
     proxyRunning?: boolean;
     /** Pre-overhaul include/exclude glob filter. */
     captureFilter?: LegacyCaptureFilterSettings;
+    /** Denylist-only predecessor of `recordingScope`. */
+    recordingExclusions?: string[];
   }
 >;
+
+/** The old denylist is exactly today's scope in `exclude` mode. */
+function readRecordingScope(stored: StoredSettings): RecordingScope {
+  const scope = stored.recordingScope;
+  if (scope && Array.isArray(scope.patterns)) {
+    return { mode: scope.mode === 'include' ? 'include' : 'exclude', patterns: scope.patterns };
+  }
+  if (Array.isArray(stored.recordingExclusions)) {
+    return { mode: 'exclude', patterns: stored.recordingExclusions };
+  }
+  return DEFAULT_RECORDING_SCOPE;
+}
 
 /**
  * The old capture filter dropped requests at record time. Its patterns become a
@@ -35,16 +51,14 @@ export function migrateCaptureFilterToQuery(
 }
 
 export function normalizeAppSettings(stored: StoredSettings): AppSettings {
-  const { systemProxyEnabled, proxyRunning, captureFilter, ...rest } = stored;
+  const { systemProxyEnabled, proxyRunning, captureFilter, recordingExclusions, ...rest } = stored;
 
   const migratedViewQuery = stored.migratedViewQuery ?? migrateCaptureFilterToQuery(captureFilter);
 
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
     ...rest,
-    recordingExclusions: Array.isArray(stored.recordingExclusions)
-      ? stored.recordingExclusions
-      : [],
+    recordingScope: readRecordingScope(stored),
     throttle: {
       ...DEFAULT_THROTTLE,
       ...stored.throttle,

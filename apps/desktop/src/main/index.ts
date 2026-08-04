@@ -12,17 +12,20 @@ import type {
   InterceptRule,
   MapRemoteRule,
   MenuAction,
-  RecordingExclusionAction,
+  RecordingScope,
+  RecordingScopeAction,
   SkillInstallTarget,
   ThrottleSetPatch,
 } from '@yanshuf/shared';
 import {
+  DEFAULT_RECORDING_SCOPE,
   DEFAULT_THROTTLE,
   IPC_CHANNELS,
   exportCurl,
-  addHostToExclusions,
+  addHostToScope,
   mergeThrottleSettings,
   normalizeAppSettings,
+  normalizeRecordingScope,
   shouldRecordCapture,
 } from '@yanshuf/shared';
 import { CaptureController } from './capture-controller';
@@ -150,7 +153,7 @@ function applyAppIcon(): void {
 
 function buildShouldCapture(): (url: string, host: string) => boolean {
   return (url, host) =>
-    shouldRecordCapture(url, host, settings.recordingExclusions ?? [], {
+    shouldRecordCapture(url, host, normalizeRecordingScope(settings.recordingScope), {
       captureLocalhost: settings.captureLocalhost ?? false,
       proxyPort: settings.port,
       mcpApiPort,
@@ -287,33 +290,36 @@ function broadcastProxyStatus(immediate = false): void {
 }
 
 /**
- * Exclusions only govern what is recorded from here on, so already-captured
+ * The scope only governs what is recorded from here on, so already-captured
  * entries are left alone — nothing the user has collected is thrown away.
  */
-function applyRecordingExclusions(next: string[]): void {
+function applyRecordingScope(next: RecordingScope): void {
   settings = {
     ...settings,
-    recordingExclusions: next,
+    recordingScope: next,
   };
   proxyServer.updateOptions({ shouldCapture: buildShouldCapture() });
   proxyServer.resetHiddenCount();
   broadcastProxyStatus(true);
 }
 
-async function applyRecordingExclusionAction(action: RecordingExclusionAction): Promise<void> {
-  const current = settings.recordingExclusions ?? [];
+async function applyRecordingScopeAction(action: RecordingScopeAction): Promise<void> {
+  const current = normalizeRecordingScope(settings.recordingScope);
   let next = current;
 
   switch (action.type) {
     case 'addHost':
-      next = addHostToExclusions(current, action.host);
+      next = addHostToScope(current, action.host);
+      break;
+    case 'setMode':
+      next = { ...current, mode: action.mode };
       break;
     case 'clear':
-      next = [];
+      next = { ...current, patterns: [] };
       break;
   }
 
-  applyRecordingExclusions(next);
+  applyRecordingScope(next);
   await saveSettings();
 }
 
@@ -520,13 +526,10 @@ function registerIpc(): void {
     return [];
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.RECORDING_EXCLUSIONS_APPLY,
-    async (_e, action: RecordingExclusionAction) => {
-      await applyRecordingExclusionAction(action);
-      return getProxyStatus();
-    },
-  );
+  ipcMain.handle(IPC_CHANNELS.RECORDING_SCOPE_APPLY, async (_e, action: RecordingScopeAction) => {
+    await applyRecordingScopeAction(action);
+    return getProxyStatus();
+  });
 
   ipcMain.handle(IPC_CHANNELS.CERT_STATUS, () => certManager.getStatus());
 
@@ -625,10 +628,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_e, next: AppSettings) => {
     const prevPort = settings.port;
     const prevCaptureLocalhost = settings.captureLocalhost;
-    const prevExclusions = settings.recordingExclusions ?? [];
+    const prevScope = normalizeRecordingScope(settings.recordingScope);
     settings = {
       ...next,
-      recordingExclusions: next.recordingExclusions ?? [],
+      recordingScope: normalizeRecordingScope(next.recordingScope ?? DEFAULT_RECORDING_SCOPE),
       throttle: {
         ...DEFAULT_THROTTLE,
         ...next.throttle,
@@ -643,10 +646,11 @@ function registerIpc(): void {
       shouldCapture: buildShouldCapture(),
     });
 
-    // Exclusions govern future traffic only, so captured entries survive the change.
-    const exclusionsChanged =
-      prevExclusions.join(';') !== settings.recordingExclusions.join(';');
-    if (exclusionsChanged) proxyServer.resetHiddenCount();
+    // The scope governs future traffic only, so captured entries survive the change.
+    const scopeChanged =
+      prevScope.mode !== settings.recordingScope.mode ||
+      prevScope.patterns.join(';') !== settings.recordingScope.patterns.join(';');
+    if (scopeChanged) proxyServer.resetHiddenCount();
     broadcastProxyStatus(true);
 
     if (settings.captureLocalhost !== prevCaptureLocalhost) {

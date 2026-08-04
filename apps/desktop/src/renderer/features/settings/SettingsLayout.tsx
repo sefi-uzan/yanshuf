@@ -4,26 +4,16 @@ import { cn } from '@yanshuf/ui/lib/utils';
 
 interface SettingsSectionProps {
   title: string;
-  description?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
 }
 
-export function SettingsSection({
-  title,
-  description,
-  actions,
-  children,
-  className,
-}: SettingsSectionProps) {
+export function SettingsSection({ title, actions, children, className }: SettingsSectionProps) {
   return (
     <section className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-          {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-        </div>
+        <h3 className="min-w-0 text-sm font-semibold tracking-tight">{title}</h3>
         {actions ? (
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>
         ) : null}
@@ -49,18 +39,16 @@ export function SettingsCard({ children, className }: SettingsCardProps) {
 interface SettingsFieldProps {
   id: string;
   label: string;
-  hint?: ReactNode;
   children: ReactNode;
 }
 
-export function SettingsField({ id, label, hint, children }: SettingsFieldProps) {
+export function SettingsField({ id, label, children }: SettingsFieldProps) {
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="text-sm font-medium leading-none">
         {label}
       </label>
       {children}
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -70,7 +58,6 @@ interface NumberFieldProps
   id: string;
   label: string;
   value: number;
-  hint?: string;
   onCommit: (value: number) => void;
 }
 
@@ -82,7 +69,6 @@ export function NumberField({
   id,
   label,
   value,
-  hint,
   onCommit,
   disabled,
   className,
@@ -128,26 +114,21 @@ export function NumberField({
         }}
         {...inputProps}
       />
-      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
 interface SettingsToggleProps {
   label: string;
-  description?: ReactNode;
   children: ReactNode;
 }
 
-/** Label + description on the left, control on the right. */
-export function SettingsToggle({ label, description, children }: SettingsToggleProps) {
+/** Label on the left, control on the right. */
+export function SettingsToggle({ label, children }: SettingsToggleProps) {
   return (
-    <div className="flex items-start justify-between gap-3 p-3">
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-sm font-medium">{label}</p>
-        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
-      </div>
-      <div className="shrink-0 pt-0.5">{children}</div>
+    <div className="flex items-center justify-between gap-3 p-3">
+      <p className="min-w-0 text-sm font-medium">{label}</p>
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
@@ -195,17 +176,12 @@ export function SettingsAlert({ variant, children, action }: SettingsAlertProps)
 
 interface SettingsDangerZoneProps {
   title?: string;
-  description?: string;
   children: ReactNode;
 }
 
-export function SettingsDangerZone({
-  title = 'Danger zone',
-  description = 'These actions are destructive and may affect HTTPS interception.',
-  children,
-}: SettingsDangerZoneProps) {
+export function SettingsDangerZone({ title = 'Danger zone', children }: SettingsDangerZoneProps) {
   return (
-    <SettingsSection title={title} description={description}>
+    <SettingsSection title={title}>
       <SettingsCard className="border-destructive/20 bg-destructive/[0.03]">{children}</SettingsCard>
     </SettingsSection>
   );

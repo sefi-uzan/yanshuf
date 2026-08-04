@@ -5,6 +5,7 @@ import {
   parseHostPort,
   type SelfTrafficOptions,
 } from './localhost';
+import { DEFAULT_RECORDING_SCOPE, type RecordingScope } from './types';
 
 export interface ShouldRecordCaptureOptions extends SelfTrafficOptions {
   captureLocalhost: boolean;
@@ -17,7 +18,7 @@ export function parseFilterPatterns(patterns: string | string[]): string[] {
 }
 
 /**
- * Exclusion patterns are matched against the host, anchored, so `*.analytics.com`
+ * Scope patterns are matched against the host, anchored, so `*.analytics.com`
  * cannot be triggered by an unrelated URL that merely mentions it in a query string.
  */
 export function hostMatchesPattern(host: string, pattern: string): boolean {
@@ -32,27 +33,40 @@ export function hostMatchesAnyPattern(host: string, patterns: string[]): boolean
   return patterns.some((pattern) => hostMatchesPattern(host, pattern));
 }
 
-/** False when the host is on the never-record list. */
-export function shouldRecordHost(host: string, exclusions: string[]): boolean {
-  const patterns = parseFilterPatterns(exclusions);
-  if (patterns.length === 0) return true;
-  return !hostMatchesAnyPattern(host, patterns);
+/** Fall back to recording everything when the scope is missing or has no patterns. */
+export function normalizeRecordingScope(scope: RecordingScope | undefined): RecordingScope {
+  if (!scope) return DEFAULT_RECORDING_SCOPE;
+  return {
+    mode: scope.mode === 'include' ? 'include' : 'exclude',
+    patterns: Array.isArray(scope.patterns) ? scope.patterns : [],
+  };
+}
+
+/** Whether the host survives the never-record / only-record list. */
+export function shouldRecordHost(host: string, scope: RecordingScope): boolean {
+  const { mode, patterns } = normalizeRecordingScope(scope);
+  const parsed = parseFilterPatterns(patterns);
+  // An empty list means "everything", including in `include` mode — otherwise
+  // switching modes before typing a host would silently drop all traffic.
+  if (parsed.length === 0) return true;
+  const matched = hostMatchesAnyPattern(host, parsed);
+  return mode === 'include' ? matched : !matched;
 }
 
 export function shouldRecordCapture(
   url: string,
   host: string,
-  exclusions: string[],
+  scope: RecordingScope,
   opts: ShouldRecordCaptureOptions,
 ): boolean {
   const { port } = parseHostPort(url, host);
   if (isSelfTraffic(host, port, opts)) return false;
   if (!opts.captureLocalhost && isLocalhostHost(host)) return false;
-  return shouldRecordHost(host, exclusions);
+  return shouldRecordHost(host, scope);
 }
 
-export function hasRecordingExclusions(exclusions: string[]): boolean {
-  return parseFilterPatterns(exclusions).length > 0;
+export function isRecordingScopeActive(scope: RecordingScope | undefined): boolean {
+  return parseFilterPatterns(normalizeRecordingScope(scope).patterns).length > 0;
 }
 
 /** Strip port from a host header or host:port string. */
@@ -65,13 +79,15 @@ export function hostWithoutPort(host: string): string {
   return normalizeHost(trimmed);
 }
 
-export function addHostToExclusions(exclusions: string[], host: string): string[] {
+export function addHostToScope(scope: RecordingScope, host: string): RecordingScope {
+  const normalized = normalizeRecordingScope(scope);
   const pattern = hostWithoutPort(host);
-  const merged = parseFilterPatterns(exclusions);
-  if (!merged.includes(pattern)) merged.push(pattern);
-  return merged;
+  const patterns = parseFilterPatterns(normalized.patterns);
+  if (!patterns.includes(pattern)) patterns.push(pattern);
+  return { ...normalized, patterns };
 }
 
-export type RecordingExclusionAction =
+export type RecordingScopeAction =
   | { type: 'addHost'; host: string }
+  | { type: 'setMode'; mode: RecordingScope['mode'] }
   | { type: 'clear' };

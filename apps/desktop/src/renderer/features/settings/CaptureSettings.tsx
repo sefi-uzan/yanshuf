@@ -1,6 +1,6 @@
 import type { AppSettings } from '@yanshuf/shared';
 import { Switch } from '@yanshuf/ui';
-import { RecordingExclusionsField } from './RecordingExclusionsField';
+import { RecordingScopeField } from './RecordingScopeField';
 import {
   NumberField,
   SettingsCard,
@@ -18,7 +18,7 @@ interface CaptureSettingsProps {
 export function CaptureSettings({ settings, onUpdate }: CaptureSettingsProps) {
   return (
     <div className="space-y-6">
-      <SettingsSection title="Proxy" description="Where Yanshuf listens and what it routes.">
+      <SettingsSection title="Proxy">
         <SettingsCard className="divide-y p-0">
           <div className="grid grid-cols-3 gap-3 p-3">
             <NumberField
@@ -47,10 +47,7 @@ export function CaptureSettings({ settings, onUpdate }: CaptureSettingsProps) {
             />
           </div>
 
-          <SettingsToggle
-            label="Capture localhost"
-            description="Route localhost traffic through the proxy and show it in the request list. Some apps still ignore the system proxy for localhost."
-          >
+          <SettingsToggle label="Capture localhost">
             <Switch
               checked={settings.captureLocalhost}
               onCheckedChange={(captureLocalhost) => onUpdate({ captureLocalhost })}
@@ -59,14 +56,11 @@ export function CaptureSettings({ settings, onUpdate }: CaptureSettingsProps) {
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection
-        title="Never record"
-        description="Hosts that stay out of the request list entirely. They are still forwarded normally — this only stops Yanshuf from storing them. To filter what you're looking at right now, use the filter bar above the request list instead."
-      >
+      <SettingsSection title="Recording scope">
         <SettingsCard className="p-3">
-          <RecordingExclusionsField
-            exclusions={settings.recordingExclusions}
-            onChange={(recordingExclusions) => onUpdate({ recordingExclusions })}
+          <RecordingScopeField
+            scope={settings.recordingScope}
+            onChange={(recordingScope) => onUpdate({ recordingScope })}
           />
         </SettingsCard>
       </SettingsSection>

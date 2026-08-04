@@ -21,13 +21,9 @@ export function AppUpdatesSection() {
   };
 
   return (
-    <SettingsSection title="About" description="App version and in-app updates.">
+    <SettingsSection title="About">
       <SettingsCard>
-        <SettingsField
-          id="app-version"
-          label="Version"
-          hint="Installed build of Yanshuf. Updates download in the background and install when you restart."
-        >
+        <SettingsField id="app-version" label="Version">
           <p className="text-sm text-foreground">{version ?? '…'}</p>
         </SettingsField>
         <div className="mt-4 flex justify-end">

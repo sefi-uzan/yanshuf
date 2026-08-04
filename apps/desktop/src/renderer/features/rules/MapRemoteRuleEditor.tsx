@@ -1,6 +1,6 @@
 import type { MapRemoteRule } from '@yanshuf/shared';
 import { FloatingLabelInput, FloatingLabelSelect } from '@yanshuf/ui';
-import { CopyUrlButton } from '@/components/CopyUrlButton';
+import { RuleMatchField } from './RuleMatchField';
 
 interface MapRemoteRuleEditorProps {
   selected: MapRemoteRule;
@@ -17,17 +17,7 @@ export function MapRemoteRuleEditor({ selected, onUpdate }: MapRemoteRuleEditorP
         value={selected.name}
         onChange={(e) => onUpdate({ name: e.target.value })}
       />
-      <div className="flex w-full items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <FloatingLabelInput
-            className="font-mono"
-            label="URL regex"
-            value={selected.match.urlRegex ?? ''}
-            onChange={(e) => onUpdate({ match: { ...selected.match, urlRegex: e.target.value } })}
-          />
-        </div>
-        <CopyUrlButton value={selected.match.urlRegex ?? ''} fromRegex title="Copy match URL" />
-      </div>
+      <RuleMatchField match={selected.match} onChange={(match) => onUpdate({ match })} />
       <div className="rounded-lg border bg-muted/10 p-3 space-y-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Map to

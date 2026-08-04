@@ -1,5 +1,10 @@
 import type { AppSettings, ProxyStatus } from '@yanshuf/shared';
-import { hasRecordingExclusions, parseFilterPatterns, resolveThrottleSettings } from '@yanshuf/shared';
+import {
+  isRecordingScopeActive,
+  normalizeRecordingScope,
+  parseFilterPatterns,
+  resolveThrottleSettings,
+} from '@yanshuf/shared';
 import type { CertificateManager } from './cert/manager';
 import { assertCertTrusted } from './cert/cert-gate';
 import type { CaptureStore } from './proxy/capture-store';
@@ -23,15 +28,16 @@ export class CaptureController {
   }
 
   getStatus(): ProxyStatus {
-    const exclusions = this.deps.settings.recordingExclusions ?? [];
+    const scope = normalizeRecordingScope(this.deps.settings.recordingScope);
     return {
       running: this.isCapturing(),
       port: this.deps.settings.port,
       entryCount: this.deps.captureStore.count,
       throttle: resolveThrottleSettings(this.deps.settings.throttle),
-      recordingExclusions: {
-        excluding: hasRecordingExclusions(exclusions),
-        patternCount: parseFilterPatterns(exclusions).length,
+      recordingScope: {
+        mode: scope.mode,
+        active: isRecordingScopeActive(scope),
+        patternCount: parseFilterPatterns(scope.patterns).length,
         droppedCount: this.deps.proxyServer.getHiddenCount(),
       },
     };

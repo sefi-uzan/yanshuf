@@ -170,10 +170,7 @@ export function CertificateSettings({
 
   return (
     <div className="space-y-5">
-      <SettingsSection
-        title="Certificate"
-        description="Root CA used to decrypt HTTPS traffic locally."
-      >
+      <SettingsSection title="Certificate">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <div
@@ -243,14 +240,12 @@ export function CertificateSettings({
         <div className="divide-y divide-destructive/10">
           <DangerActionRow
             title="Remove from Keychain"
-            description="Deletes the trusted root CA from your login keychain. HTTPS decryption stops until you reinstall."
             actionLabel="Remove"
             disabled={busy}
             onAction={() => setConfirmAction('uninstall')}
           />
           <DangerActionRow
             title="Reset CA"
-            description="Stops capture, deletes local CA files, and generates a new root certificate."
             actionLabel="Reset"
             disabled={busy}
             onAction={() => setConfirmAction('reset')}
@@ -290,23 +285,18 @@ export function CertificateSettings({
 
 function DangerActionRow({
   title,
-  description,
   actionLabel,
   disabled,
   onAction,
 }: {
   title: string;
-  description: string;
   actionLabel: string;
   disabled: boolean;
   onAction: () => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
+    <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <p className="min-w-0 text-sm font-medium">{title}</p>
       <Button
         variant="outline"
         size="sm"

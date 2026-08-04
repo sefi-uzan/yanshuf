@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { AutoResponderRule, InterceptMode, InterceptRule, MapRemoteRule } from '@yanshuf/shared';
+import type {
+  AutoResponderRule,
+  InterceptMode,
+  InterceptRule,
+  MapRemoteRule,
+  RuleMatch,
+} from '@yanshuf/shared';
 
 export type RuleAction = 'mock' | 'rewrite' | 'breakpoint' | 'map-remote';
 export type RuleKind = 'mock' | 'intercept' | 'mapRemote';
@@ -40,13 +46,16 @@ export function ruleActionDescription(action: RuleAction): string {
   }
 }
 
+/** Prefix is the friendliest starting point for a hand-typed URL. */
+const EMPTY_MATCH: RuleMatch = { pattern: '', mode: 'prefix' };
+
 export function emptyMockRule(order: number): AutoResponderRule {
   return {
     id: uuidv4(),
     name: 'New Mock',
     enabled: true,
     order,
-    match: { urlRegex: '' },
+    match: { ...EMPTY_MATCH },
     response: {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -64,7 +73,7 @@ export function emptyInterceptRule(order: number, mode: InterceptMode = 'rewrite
     order,
     mode,
     phase: 'request',
-    match: { urlRegex: '' },
+    match: { ...EMPTY_MATCH },
     request: { headers: {}, body: '' },
     response: { status: 200, headers: {}, body: '' },
   };
@@ -76,7 +85,7 @@ export function emptyMapRemoteRule(order: number): MapRemoteRule {
     name: 'New Map Remote',
     enabled: true,
     order,
-    match: { urlRegex: '' },
+    match: { ...EMPTY_MATCH },
     mapTo: { host: '' },
   };
 }

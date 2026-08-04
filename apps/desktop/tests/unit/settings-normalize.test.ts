@@ -41,11 +41,22 @@ describe('normalizeAppSettings', () => {
     expect(settings).not.toHaveProperty('proxyRunning');
   });
 
-  it('defaults recording exclusions to empty', () => {
-    expect(normalizeAppSettings({}).recordingExclusions).toEqual([]);
-    expect(normalizeAppSettings({ recordingExclusions: ['*.x.com'] }).recordingExclusions).toEqual([
-      '*.x.com',
-    ]);
+  it('defaults the recording scope to recording everything', () => {
+    expect(normalizeAppSettings({}).recordingScope).toEqual({ mode: 'exclude', patterns: [] });
+  });
+
+  it('preserves an explicit recording scope', () => {
+    expect(
+      normalizeAppSettings({ recordingScope: { mode: 'include', patterns: ['*.x.com'] } })
+        .recordingScope,
+    ).toEqual({ mode: 'include', patterns: ['*.x.com'] });
+  });
+
+  it('reads the pre-scope exclusion list as exclude mode', () => {
+    const settings = normalizeAppSettings({ recordingExclusions: ['*.x.com'] });
+
+    expect(settings.recordingScope).toEqual({ mode: 'exclude', patterns: ['*.x.com'] });
+    expect(settings).not.toHaveProperty('recordingExclusions');
   });
 
   describe('capture filter migration', () => {
@@ -56,7 +67,7 @@ describe('normalizeAppSettings', () => {
 
       expect(settings.migratedViewQuery).toBe('-host:*.analytics.com');
       // Nothing is dropped at record time until the user opts in.
-      expect(settings.recordingExclusions).toEqual([]);
+      expect(settings.recordingScope).toEqual({ mode: 'exclude', patterns: [] });
     });
 
     it('turns an old include filter into a positive view query', () => {
@@ -83,7 +94,7 @@ describe('normalizeAppSettings', () => {
     });
 
     it('is a no-op once the renderer has consumed the query', () => {
-      const settings = normalizeAppSettings({ recordingExclusions: [] });
+      const settings = normalizeAppSettings({ recordingScope: { mode: 'exclude', patterns: [] } });
       expect(settings.migratedViewQuery).toBeUndefined();
     });
   });

@@ -41,14 +41,27 @@ export interface CaptureEntrySummary {
   };
 }
 
+/**
+ * `regex` tests an unanchored regular expression against the whole URL. `exact`
+ * and `prefix` compare a plain URL instead: the host must be equal and the path
+ * must either match in full or be a prefix. Both ignore the scheme and a trailing
+ * slash, so a pasted URL works whether or not it carries `https://`.
+ */
+export type UrlMatchMode = 'regex' | 'exact' | 'prefix';
+
+export interface RuleMatch {
+  pattern?: string;
+  mode?: UrlMatchMode;
+  /** Pre-match-mode field, still read so older rule files keep working. */
+  urlRegex?: string;
+}
+
 export interface AutoResponderRule {
   id: string;
   name: string;
   enabled: boolean;
   order: number;
-  match: {
-    urlRegex?: string;
-  };
+  match: RuleMatch;
   response: {
     status: number;
     headers: Record<string, string>;
@@ -68,9 +81,7 @@ export interface MapRemoteRule {
   name: string;
   enabled: boolean;
   order: number;
-  match: {
-    urlRegex?: string;
-  };
+  match: RuleMatch;
   mapTo: {
     host: string;
     port?: number;
@@ -85,9 +96,7 @@ export interface InterceptRule {
   order: number;
   mode: InterceptMode;
   phase: InterceptPhase;
-  match: {
-    urlRegex?: string;
-  };
+  match: RuleMatch;
   request?: InterceptModifications;
   response?: InterceptModifications;
 }
@@ -169,6 +178,21 @@ export interface ThrottleSetPatch {
   uploadKbps?: number;
 }
 
+/**
+ * `exclude` never records the listed hosts; `include` records nothing else. Both
+ * still forward traffic normally — the scope only decides what Yanshuf stores.
+ */
+export type RecordingScopeMode = 'exclude' | 'include';
+
+export interface RecordingScope {
+  mode: RecordingScopeMode;
+  /**
+   * Host patterns, `*` wildcards allowed. An empty list records everything in
+   * either mode, so switching to `include` before adding hosts is not a trap.
+   */
+  patterns: string[];
+}
+
 export interface AppSettings {
   port: number;
   ringBufferSize: number;
@@ -176,10 +200,10 @@ export interface AppSettings {
   capturing: boolean;
   guidedTourCompleted?: boolean;
   /**
-   * Host patterns that are proxied but never recorded. Everything else is kept and
-   * filtered in the view, so filtering is reversible.
+   * Which hosts reach the request list at all. Everything recorded is kept and
+   * filtered in the view instead, so view filtering stays reversible.
    */
-  recordingExclusions: string[];
+  recordingScope: RecordingScope;
   captureLocalhost: boolean;
   throttle: ThrottleSettings;
   /**
@@ -198,9 +222,10 @@ export interface CertStatus {
   keychainLocation?: 'none' | 'login' | 'system';
 }
 
-export interface RecordingExclusionStatus {
-  /** True when any exclusion pattern is configured. */
-  excluding: boolean;
+export interface RecordingScopeStatus {
+  mode: RecordingScopeMode;
+  /** True when at least one pattern is configured, so the scope actually narrows. */
+  active: boolean;
   patternCount: number;
   /** Requests proxied but never recorded since the last clear or settings change. */
   droppedCount: number;
@@ -211,14 +236,17 @@ export interface ProxyStatus {
   port: number;
   entryCount: number;
   throttle: ThrottleSettings;
-  recordingExclusions: RecordingExclusionStatus;
+  recordingScope: RecordingScopeStatus;
 }
 
 export interface SystemProxyState {
   enabled: boolean;
 }
 
-export const DEFAULT_RECORDING_EXCLUSIONS: string[] = [];
+export const DEFAULT_RECORDING_SCOPE: RecordingScope = {
+  mode: 'exclude',
+  patterns: [],
+};
 
 export const DEFAULT_THROTTLE: ThrottleSettings = {
   enabled: false,
@@ -234,7 +262,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxBodySize: 5 * 1024 * 1024,
   capturing: false,
   guidedTourCompleted: false,
-  recordingExclusions: DEFAULT_RECORDING_EXCLUSIONS,
+  recordingScope: DEFAULT_RECORDING_SCOPE,
   captureLocalhost: false,
   throttle: DEFAULT_THROTTLE,
 };
@@ -249,7 +277,7 @@ export const IPC_CHANNELS = {
   CAPTURE_GET: 'capture:get',
   CAPTURE_CLEAR: 'capture:clear',
   CAPTURE_UPDATED: 'capture:updated',
-  RECORDING_EXCLUSIONS_APPLY: 'recording-exclusions:apply',
+  RECORDING_SCOPE_APPLY: 'recording-scope:apply',
   PROXY_STATUS_UPDATED: 'proxy:status-updated',
   CERT_STATUS: 'cert:status',
   CERT_EXPORT: 'cert:export',

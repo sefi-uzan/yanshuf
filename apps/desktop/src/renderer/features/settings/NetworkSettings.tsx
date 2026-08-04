@@ -33,15 +33,9 @@ export function NetworkSettings({ settings, onUpdate }: NetworkSettingsProps) {
 
   return (
     <div className="space-y-6">
-      <SettingsSection
-        title="Network throttling"
-        description="Simulate slow networks for proxied traffic. Mock rules are not throttled."
-      >
+      <SettingsSection title="Network throttling">
         <SettingsCard className="divide-y p-0">
-          <SettingsToggle
-            label="Enable throttling"
-            description="Adds latency and bandwidth limits to passthrough requests."
-          >
+          <SettingsToggle label="Enable throttling">
             <Switch
               checked={throttle.enabled}
               onCheckedChange={(enabled) => updateThrottle({ enabled })}

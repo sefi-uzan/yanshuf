@@ -21422,6 +21422,15 @@ function textResult(data) {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
   };
 }
+var ruleMatchSchema = {
+  url: external_exports.string().optional().describe(
+    "URL to match. Interpreted according to matchMode. The scheme is optional for exact and prefix."
+  ),
+  matchMode: external_exports.enum(["regex", "exact", "prefix"]).optional().describe(
+    "How to match `url`. 'prefix' (default) matches the host plus everything under the given path, 'exact' requires the whole URL including query, 'regex' tests an unanchored regular expression against the full URL."
+  ),
+  urlRegex: external_exports.string().optional().describe('Deprecated. Same as passing url with matchMode "regex".')
+};
 function registerTools(server, client) {
   server.registerTool(
     "yanshuf_status",
@@ -21544,7 +21553,7 @@ function registerTools(server, client) {
         captureId: external_exports.string().optional(),
         name: external_exports.string().optional(),
         enabled: external_exports.boolean().optional(),
-        urlRegex: external_exports.string().optional(),
+        ...ruleMatchSchema,
         status: external_exports.number().optional(),
         headers: external_exports.record(external_exports.string()).optional(),
         body: external_exports.string().optional(),
@@ -21580,7 +21589,7 @@ function registerTools(server, client) {
         enabled: external_exports.boolean().optional(),
         mode: external_exports.enum(["rewrite", "breakpoint"]),
         phase: external_exports.enum(["request", "response"]),
-        urlRegex: external_exports.string().optional(),
+        ...ruleMatchSchema,
         headers: external_exports.record(external_exports.string()).optional(),
         body: external_exports.string().optional(),
         status: external_exports.number().optional()
@@ -21613,7 +21622,7 @@ function registerTools(server, client) {
         captureId: external_exports.string().optional(),
         name: external_exports.string().optional(),
         enabled: external_exports.boolean().optional(),
-        urlRegex: external_exports.string().optional(),
+        ...ruleMatchSchema,
         host: external_exports.string().optional(),
         port: external_exports.number().optional(),
         protocol: external_exports.enum(["http", "https"]).optional()

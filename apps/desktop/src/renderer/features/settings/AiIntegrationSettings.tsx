@@ -168,7 +168,6 @@ export function AiIntegrationSettings({
     <div className="space-y-5">
       <SettingsSection
         title="Integrations"
-        description="Connect Cursor or Claude Code via MCP."
         actions={
           <IntegrationActionsMenu
             hasAnyInstall={status.hasAnyInstall}

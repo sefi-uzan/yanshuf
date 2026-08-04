@@ -21,10 +21,6 @@ const HOP_BY_HOP_HEADERS = new Set([
   'content-encoding',
 ]);
 
-export function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export function captureToAutoResponderRule(
   entry: CaptureEntry,
   order: number,
@@ -45,7 +41,8 @@ export function captureToAutoResponderRule(
     enabled: true,
     order,
     match: {
-      urlRegex: escapeRegex(entry.url),
+      pattern: entry.url,
+      mode: 'exact',
     },
     response: {
       status: entry.status || 200,
@@ -66,8 +63,10 @@ export function captureToMapRemoteRule(
     name: `${entry.host} → …`,
     enabled: true,
     order,
+    // Host-only prefix, so every path on the host is redirected.
     match: {
-      urlRegex: escapeRegex(entry.host),
+      pattern: entry.host,
+      mode: 'prefix',
     },
     mapTo: {
       host: '',

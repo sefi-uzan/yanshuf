@@ -16,5 +16,5 @@ export * from './capture-search';
 export * from './capture-to-rule';
 export * from './capture-to-composer';
 export { applyMapRemoteUrl } from './map-remote-url';
-export { matchesUrlRegex } from './url-regex-match';
+export { matchesRuleUrl, matchesUrlRegex, normalizeRuleMatch } from './url-match';
 export * from './integration';

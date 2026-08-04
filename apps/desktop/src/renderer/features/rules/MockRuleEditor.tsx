@@ -3,7 +3,7 @@ import { Button ,
   FloatingLabelInput,
   FloatingLabelTextarea,
 } from '@yanshuf/ui';
-import { CopyUrlButton } from '@/components/CopyUrlButton';
+import { RuleMatchField } from './RuleMatchField';
 import { FolderOpen } from 'lucide-react';
 
 interface MockRuleEditorProps {
@@ -26,17 +26,7 @@ export function MockRuleEditor({
         value={selected.name}
         onChange={(e) => onUpdate({ name: e.target.value })}
       />
-      <div className="flex w-full items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <FloatingLabelInput
-            className="font-mono"
-            label="URL regex"
-            value={selected.match.urlRegex ?? ''}
-            onChange={(e) => onUpdate({ match: { ...selected.match, urlRegex: e.target.value } })}
-          />
-        </div>
-        <CopyUrlButton value={selected.match.urlRegex ?? ''} fromRegex title="Copy match URL" />
-      </div>
+      <RuleMatchField match={selected.match} onChange={(match) => onUpdate({ match })} />
       <div className="grid grid-cols-2 gap-2">
         <FloatingLabelInput
           type="number"

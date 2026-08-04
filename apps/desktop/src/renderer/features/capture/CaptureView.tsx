@@ -7,7 +7,7 @@ import { FilterBar } from './FilterBar';
 import { SessionList } from './SessionList';
 import { RequestPane, ResponsePane } from './MessagePane';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Shield, Bot, Filter } from 'lucide-react';
+import { Shield, Bot } from 'lucide-react';
 import { CopyUrlButton } from '@/components/CopyUrlButton';
 import { ShortcutHint, ShortcutLegend } from '@/components/shortcut-hints';
 import type { DetailMode } from './detailMode';
@@ -43,6 +43,7 @@ interface CaptureViewProps {
   onOpenAiSettings?: () => void;
   onOpenFilterSettings?: () => void;
   proxyStatusNonce?: number;
+  onEntryCountChange?: (count: number) => void;
 }
 
 export function CaptureView({
@@ -63,6 +64,7 @@ export function CaptureView({
   onOpenAiSettings,
   onOpenFilterSettings,
   proxyStatusNonce = 0,
+  onEntryCountChange,
 }: CaptureViewProps) {
   const [entries, setEntries] = useState<CaptureEntrySummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -116,6 +118,10 @@ export function CaptureView({
   useEffect(() => {
     void window.yanshuf.proxy.status().then(setStatus);
   }, [proxyStatusNonce]);
+
+  useEffect(() => {
+    onEntryCountChange?.(entries.length);
+  }, [entries.length, onEntryCountChange]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -203,8 +209,8 @@ export function CaptureView({
               ref={filterInputRef}
               query={query}
               onQueryChange={setQuery}
-              shown={filtered.length}
-              total={entries.length}
+              recordingScope={status?.recordingScope}
+              onOpenRecordingSettings={onOpenFilterSettings}
             />
             <div className="min-h-0 flex-1">
               <SessionList
@@ -264,7 +270,6 @@ export function CaptureView({
         onClear={clearSession}
         onOpenCertificateSettings={onOpenCertificateSettings}
         onOpenAiSettings={onOpenAiSettings}
-        onOpenFilterSettings={onOpenFilterSettings}
       />
     </div>
   );
@@ -281,7 +286,6 @@ function StatusBar({
   onClear,
   onOpenCertificateSettings,
   onOpenAiSettings,
-  onOpenFilterSettings,
 }: {
   status: ProxyStatus | null;
   entryCount: number;
@@ -293,7 +297,6 @@ function StatusBar({
   onClear: () => void;
   onOpenCertificateSettings?: () => void;
   onOpenAiSettings?: () => void;
-  onOpenFilterSettings?: () => void;
 }) {
   const certLabel =
     certStatus?.trusted === 'installed'
@@ -307,16 +310,6 @@ function StatusBar({
       : certStatus?.trusted === 'untrusted'
         ? 'Certificate installed but not trusted'
         : 'Install root certificate';
-
-  // Live filtering shows its own count in the filter bar; this only reports the
-  // never-record list, which is the one thing that permanently drops traffic.
-  const exclusions = status?.recordingExclusions;
-  const exclusionLabel = exclusions?.excluding
-    ? `Not recording: ${exclusions.patternCount}`
-    : 'Recording all';
-  const exclusionTitle = exclusions?.excluding
-    ? `${exclusions.patternCount} host pattern(s) are never recorded. ${exclusions.droppedCount} request(s) dropped since the last change — still forwarded, just not stored.`
-    : 'Every proxied request is recorded. Add exclusions in Settings → Capture.';
 
   return (
     <div className="flex items-center gap-3 border-t bg-muted/30 px-3 py-1.5 text-xs">
@@ -332,25 +325,6 @@ function StatusBar({
           active={status?.throttle.enabled ?? false}
           onToggle={onToggleThrottle}
         />
-        <button
-          type="button"
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/60',
-            exclusions?.excluding
-              ? 'border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300'
-              : 'border-border bg-background/60 text-muted-foreground',
-          )}
-          onClick={() => onOpenFilterSettings?.()}
-          title={exclusionTitle}
-        >
-          <Filter
-            className={cn(
-              'h-3.5 w-3.5',
-              exclusions?.excluding && 'text-violet-600 dark:text-violet-400',
-            )}
-          />
-          {exclusionLabel}
-        </button>
       </div>
       <div className="flex flex-1 items-center justify-center gap-2">
         <button
@@ -410,11 +384,16 @@ function StatusBar({
               ? 'AI update'
               : 'AI'}
         </button>
-        <span className="text-muted-foreground">Port: {status?.port ?? 8888}</span>
-        <span className="text-muted-foreground">Entries: {entryCount}</span>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" className="h-7 gap-2 px-2 text-muted-foreground" onClick={onClear}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-2 px-2"
+          onClick={onClear}
+          disabled={entryCount === 0}
+          title={entryCount === 0 ? 'Nothing to clear' : `Clear ${entryCount} captured requests`}
+        >
           Clear
           <ShortcutHint keys={SHORTCUTS.clearSession.keys} />
         </Button>
