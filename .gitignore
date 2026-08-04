@@ -95,3 +95,6 @@ out/
 
 # Turborepo
 .turbo
+
+# MCP generated integration manifest
+apps/mcp/integration-manifest.json
