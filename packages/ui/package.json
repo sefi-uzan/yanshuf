@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --ext .ts,.tsx src/"
+    "lint": "eslint src/"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.3.7",
@@ -35,9 +35,9 @@
     "@types/react-dom": "^19.2.4",
     "@yanshuf/eslint-config": "workspace:*",
     "@yanshuf/typescript-config": "workspace:*",
-    "eslint": "^10.8.0",
+    "eslint": "^9.39.2",
     "react": "^19.2.8",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "react": "^19.0.0",
