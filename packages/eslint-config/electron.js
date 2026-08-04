@@ -1,4 +1,4 @@
-/** @type {import('eslint').Linter.Config} */
-module.exports = {
-  extends: ['./base.js', 'plugin:import/electron'],
-};
+import base from './base.js';
+
+/** Electron renderer/main share the base TypeScript rules. */
+export default [...base];

@@ -1,4 +1,3 @@
-/** @type {import('eslint').Linter.Config} */
-module.exports = {
-  extends: ['./base.js'],
-};
+import base from './base.js';
+
+export default [...base];

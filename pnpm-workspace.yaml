@@ -18,6 +18,20 @@ overrides:
   fast-uri: ">=3.1.4"
   hono: ">=4.12.27"
   "@hono/node-server": ">=2.0.5"
+  "brace-expansion@<1.1.18": "1.1.18"
+  "ip-address": ">=10.3.1"
   "postcss@<8.5.18": "8.5.18"
   sharp: ">=0.35.0"
   "uuid@<11.1.1": "11.1.1"
+minimumReleaseAgeExclude:
+  - '@typescript-eslint/eslint-plugin@8.66.0'
+  - '@typescript-eslint/parser@8.66.0'
+  - '@typescript-eslint/project-service@8.66.0'
+  - '@typescript-eslint/scope-manager@8.66.0'
+  - '@typescript-eslint/tsconfig-utils@8.66.0'
+  - '@typescript-eslint/type-utils@8.66.0'
+  - '@typescript-eslint/types@8.66.0'
+  - '@typescript-eslint/typescript-estree@8.66.0'
+  - '@typescript-eslint/utils@8.66.0'
+  - '@typescript-eslint/visitor-keys@8.66.0'
+  - typescript-eslint@8.66.0
