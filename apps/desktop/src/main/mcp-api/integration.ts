@@ -382,7 +382,7 @@ export async function verifyIntegration(
   const details: string[] = [];
   const nodeCheck = await checkNodeOnPath();
 
-  let mcpConfigured: boolean;
+  let mcpConfigured = false;
   if (client === 'cursor') {
     const config = await readJsonFile<{ mcpServers?: Record<string, { args?: string[] }> }>(
       homePath('.cursor', 'mcp.json'),
@@ -427,7 +427,7 @@ export async function verifyIntegration(
   const skillInstalled =
     skillChecks.length === 0 ? true : skillChecks.every(Boolean);
 
-  let hookInstalled: boolean;
+  let hookInstalled = false;
   if (client === 'cursor') {
     const hooks = await readJsonFile<{ hooks?: { sessionEnd?: { command?: string }[] } }>(
       homePath('.cursor', 'hooks.json'),

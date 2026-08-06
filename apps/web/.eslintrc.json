@@ -1,0 +1,4 @@
+{
+  "extends": ["next/core-web-vitals", "@yanshuf/eslint-config/react"],
+  "ignorePatterns": ["next-env.d.ts"]
+}
