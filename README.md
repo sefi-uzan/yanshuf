@@ -2,6 +2,13 @@
 
 Yanshuf is an open-source macOS desktop app for intercepting HTTP and HTTPS traffic. Route your system or app traffic through it to inspect, modify, replay, and automate requests in real time.
 
+## Why I built this?
+
+I am usually a Windows user and have used Fiddler Classic for years, its a powerful tool, way more powerful than this, but its outdated.
+I tried some other free alternatives when I moved to Mac, like Charles and HTTP-Toolkit. I even considered paying for Fiddler Everywhere or whatever they call it.
+I then decided to build this, its tailored for my own personal needs but I assume it might help someone with the same needs.
+Oh and let's not forget, you can literally interact with it from your favorite AI agent.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
 

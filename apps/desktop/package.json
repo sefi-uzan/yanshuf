@@ -1,7 +1,7 @@
 {
   "name": "@yanshuf/desktop",
   "productName": "Yanshuf",
-  "version": "1.0.0",
+  "version": "0.0.8",
   "description": "macOS network proxy for inspecting HTTP/HTTPS traffic",
   "main": ".vite/build/main.js",
   "private": true,
