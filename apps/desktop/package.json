@@ -67,7 +67,7 @@
     "@yanshuf/tailwind-config": "workspace:*",
     "@yanshuf/typescript-config": "workspace:*",
     "autoprefixer": "^10.5.4",
-    "electron": "42.4.1",
+    "electron": "43.3.0",
     "eslint": "^8.57.1",
     "playwright": "^1.62.1",
     "postcss": "^8.5.26",
