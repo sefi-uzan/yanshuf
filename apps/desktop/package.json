@@ -29,7 +29,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.1.2",
     "@tanstack/react-virtual": "^3.14.9",
     "@yanshuf/shared": "workspace:*",
     "@yanshuf/ui": "workspace:*",
