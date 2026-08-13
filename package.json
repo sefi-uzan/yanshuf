@@ -15,6 +15,6 @@
     "audit": "pnpm audit --prod --audit-level=high"
   },
   "devDependencies": {
-    "turbo": "^2.5.0"
+    "turbo": "^2.10.9"
   }
 }

@@ -16,7 +16,7 @@
   "devDependencies": {
     "@yanshuf/eslint-config": "workspace:*",
     "@yanshuf/typescript-config": "workspace:*",
-    "eslint": "^8.57.1",
-    "typescript": "^5.9.3"
+    "eslint": "^10.8.1",
+    "typescript": "^7.0.2"
   }
 }
