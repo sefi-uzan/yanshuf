@@ -20,6 +20,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run audit
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
