@@ -10,7 +10,7 @@ export function stagedResourcesDir(appBuildPath: string): string {
 }
 
 /**
- * Copy MCP server bundle, skills, and hook scripts into Contents/Resources/mcp
+ * Copy MCP server bundle and skills into Contents/Resources/mcp
  * so Cursor/Claude Code can launch them with plain `node` (asar paths do not work).
  */
 export function copyMcpBundle(resourcesPath: string, desktopRoot: string): void {
@@ -33,7 +33,6 @@ export function copyMcpBundle(resourcesPath: string, desktopRoot: string): void 
   fs.copyFileSync(indexSrc, path.join(dest, 'index.js'));
 
   copyRecursive(path.join(mcpRoot, 'skills'), path.join(dest, 'skills'));
-  copyRecursive(path.join(mcpRoot, 'scripts'), path.join(dest, 'scripts'));
   const manifestSrc = path.join(mcpRoot, 'integration-manifest.json');
   if (fs.existsSync(manifestSrc)) {
     fs.copyFileSync(manifestSrc, path.join(dest, 'integration-manifest.json'));

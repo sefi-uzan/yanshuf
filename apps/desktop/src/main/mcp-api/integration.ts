@@ -30,7 +30,6 @@ function homePath(...segments: string[]): string {
 export function bundledMcpPaths(): {
   mcpEntry: string;
   skillsSource: string;
-  cleanupSessionScript: string;
   manifestPath: string;
 } {
   const mcpEntry = resolveBundledMcpEntry() ?? primaryMcpEntryPath();
@@ -39,7 +38,6 @@ export function bundledMcpPaths(): {
     return {
       mcpEntry,
       skillsSource: path.join(root, 'skills', 'yanshuf'),
-      cleanupSessionScript: path.join(root, 'scripts', 'cleanup-session.sh'),
       manifestPath: path.join(root, 'integration-manifest.json'),
     };
   }
@@ -48,7 +46,6 @@ export function bundledMcpPaths(): {
   return {
     mcpEntry,
     skillsSource: path.join(monorepoRoot, 'apps', 'mcp', 'skills', 'yanshuf'),
-    cleanupSessionScript: path.join(monorepoRoot, 'apps', 'mcp', 'scripts', 'cleanup-session.sh'),
     manifestPath: path.join(monorepoRoot, 'apps', 'mcp', 'integration-manifest.json'),
   };
 }
@@ -96,25 +93,13 @@ export function bundledIntegrationManifest(): IntegrationManifest {
 
 export function getClientConfigPaths(client: IntegrationClient): {
   mcpConfig: string;
-  hookConfig: string;
   mcpEntry: string;
-  cleanupSessionScript: string;
 } {
-  const { mcpEntry, cleanupSessionScript } = bundledMcpPaths();
+  const { mcpEntry } = bundledMcpPaths();
   if (client === 'cursor') {
-    return {
-      mcpConfig: homePath('.cursor', 'mcp.json'),
-      hookConfig: homePath('.cursor', 'hooks.json'),
-      mcpEntry,
-      cleanupSessionScript,
-    };
+    return { mcpConfig: homePath('.cursor', 'mcp.json'), mcpEntry };
   }
-  return {
-    mcpConfig: homePath('.claude', 'settings.json'),
-    hookConfig: homePath('.claude', 'settings.json'),
-    mcpEntry,
-    cleanupSessionScript,
-  };
+  return { mcpConfig: homePath('.claude', 'settings.json'), mcpEntry };
 }
 
 export async function detectMcpConfigured(client: IntegrationClient): Promise<boolean> {
@@ -128,19 +113,6 @@ export async function detectMcpConfigured(client: IntegrationClient): Promise<bo
     homePath('.claude', 'settings.json'),
   );
   return Boolean(config?.mcpServers?.yanshuf?.args?.some((arg) => arg.includes('index.js')));
-}
-
-export async function detectHookConfigured(client: IntegrationClient): Promise<boolean> {
-  if (client === 'cursor') {
-    const hooks = await readJsonFile<{ hooks?: { sessionEnd?: { command?: string }[] } }>(
-      homePath('.cursor', 'hooks.json'),
-    );
-    return Boolean(hooks?.hooks?.sessionEnd?.some((h) => isYanshufHook(h.command)));
-  }
-  const hooks = await readJsonFile<{ hooks?: { SessionEnd?: { command?: string }[] } }>(
-    homePath('.claude', 'settings.json'),
-  );
-  return Boolean(hooks?.hooks?.SessionEnd?.some((h) => isYanshufHook(h.command)));
 }
 
 export async function detectSkillConfigured(skillPath: string): Promise<boolean> {
@@ -180,7 +152,13 @@ export async function uninstallMcpEntry(client: IntegrationClient): Promise<Inte
   return { ok: true, message: 'Removed yanshuf MCP server from Claude Code.', path: configPath };
 }
 
-export async function uninstallSessionEndHook(client: IntegrationClient): Promise<IntegrationStepResult> {
+/**
+ * Earlier releases installed a global sessionEnd hook that wiped captures whenever any
+ * chat session closed. Install/update/uninstall paths all scrub it from client configs.
+ */
+export async function removeLegacySessionEndHook(
+  client: IntegrationClient,
+): Promise<IntegrationStepResult> {
   if (client === 'cursor') {
     const configPath = homePath('.cursor', 'hooks.json');
     const existing = await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath);
@@ -302,6 +280,8 @@ export async function installSkill(
   }
 
   const dest = skillDestination(client, target);
+  // Replace rather than merge so files removed from the bundled skill don't linger.
+  await removeDirRecursive(dest);
   await copyDirRecursive(skillsSource, dest);
   return { ok: true, message: `Installed /yanshuf skill to ${dest}`, path: dest };
 }
@@ -310,66 +290,14 @@ function isYanshufHook(command: string | undefined): boolean {
   return Boolean(command?.includes('cleanup-session'));
 }
 
-export async function installSessionEndHook(client: IntegrationClient): Promise<IntegrationStepResult> {
-  const { cleanupSessionScript } = bundledMcpPaths();
-  try {
-    await fs.access(cleanupSessionScript);
-  } catch {
-    return { ok: false, message: `Cleanup session script not found at ${cleanupSessionScript}` };
-  }
-
-  if (client === 'cursor') {
-    const configPath = homePath('.cursor', 'hooks.json');
-    const existing = (await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath)) ?? {};
-    const hooks = existing.hooks ?? {};
-    const sessionEnd = Array.isArray(hooks.sessionEnd) ? [...hooks.sessionEnd] : [];
-    const idx = sessionEnd.findIndex(
-      (h) => typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command)),
-    );
-    const entry = { command: cleanupSessionScript };
-    if (idx >= 0) {
-      sessionEnd[idx] = entry;
-    } else {
-      sessionEnd.push(entry);
-    }
-    hooks.sessionEnd = sessionEnd;
-    existing.hooks = hooks;
-    await writeJsonFile(configPath, existing);
-    return { ok: true, message: 'Added sessionEnd hook to Cursor.', path: configPath };
-  }
-
-  const configPath = homePath('.claude', 'settings.json');
-  const existing =
-    (await readJsonFile<{ hooks?: Record<string, unknown[]> }>(configPath)) ?? {};
-  const hooks = existing.hooks ?? {};
-  const sessionEnd = Array.isArray(hooks.SessionEnd) ? [...hooks.SessionEnd] : [];
-  const idx = sessionEnd.findIndex(
-    (h) => typeof h === 'object' && h && 'command' in h && isYanshufHook(String(h.command)),
-  );
-  const entry = { command: cleanupSessionScript };
-  if (idx >= 0) {
-    sessionEnd[idx] = entry;
-  } else {
-    sessionEnd.push(entry);
-  }
-  hooks.SessionEnd = sessionEnd;
-  existing.hooks = hooks;
-  await writeJsonFile(configPath, existing);
-  return { ok: true, message: 'Added SessionEnd hook to Claude Code.', path: configPath };
-}
-
-export async function updateHookPath(client: IntegrationClient): Promise<IntegrationStepResult> {
-  return installSessionEndHook(client);
-}
-
 export async function installIntegration(
   client: IntegrationClient,
   target: SkillInstallTarget,
-): Promise<{ mcp: IntegrationStepResult; skill: IntegrationStepResult; hook: IntegrationStepResult }> {
+): Promise<{ mcp: IntegrationStepResult; skill: IntegrationStepResult }> {
   const mcp = await installMcpEntry(client);
   const skill = await installSkill(client, target);
-  const hook = await installSessionEndHook(client);
-  return { mcp, skill, hook };
+  await removeLegacySessionEndHook(client);
+  return { mcp, skill };
 }
 
 export async function verifyIntegration(
@@ -378,7 +306,6 @@ export async function verifyIntegration(
   apiReachable: boolean,
   certTrusted: boolean,
 ): Promise<IntegrationVerifyResult> {
-  const { cleanupSessionScript } = bundledMcpPaths();
   const details: string[] = [];
   const nodeCheck = await checkNodeOnPath();
 
@@ -427,30 +354,6 @@ export async function verifyIntegration(
   const skillInstalled =
     skillChecks.length === 0 ? true : skillChecks.every(Boolean);
 
-  let hookInstalled = false;
-  if (client === 'cursor') {
-    const hooks = await readJsonFile<{ hooks?: { sessionEnd?: { command?: string }[] } }>(
-      homePath('.cursor', 'hooks.json'),
-    );
-    hookInstalled = Boolean(
-      hooks?.hooks?.sessionEnd?.some((h) => isYanshufHook(h.command)),
-    );
-  } else {
-    const hooks = await readJsonFile<{ hooks?: { SessionEnd?: { command?: string }[] } }>(
-      homePath('.claude', 'settings.json'),
-    );
-    hookInstalled = Boolean(
-      hooks?.hooks?.SessionEnd?.some((h) => isYanshufHook(h.command)),
-    );
-  }
-  if (!hookInstalled) details.push('SessionEnd hook not configured.');
-
-  try {
-    await fs.access(cleanupSessionScript);
-  } catch {
-    details.push(`Cleanup session script missing at ${cleanupSessionScript}`);
-  }
-
   if (!nodeCheck.ok) {
     details.push(nodeCheck.message ?? 'Node.js not available on PATH.');
   }
@@ -460,7 +363,6 @@ export async function verifyIntegration(
   return {
     mcpConfigured,
     skillInstalled,
-    hookInstalled,
     apiReachable,
     certTrusted,
     nodeOk: nodeCheck.ok,

@@ -20,7 +20,6 @@ import { getInitialStep, verifyAllCritical, type WizardStepIndex } from './integ
 import { PrerequisitesStep } from './PrerequisitesStrip';
 import { McpEntryStep } from './steps/McpEntryStep';
 import { SkillsStep } from './steps/SkillsStep';
-import { HookStep } from './steps/HookStep';
 import { VerifyStep } from './steps/VerifyStep';
 import { notifyActionFailed } from '@/lib/toast-actions';
 
@@ -44,8 +43,7 @@ export function IntegrationOnboarding({
   const [installPersonal, setInstallPersonal] = useState(true);
   const [projectRoots, setProjectRoots] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [stepResults, setStepResults] = useState<Partial<Record<1 | 2 | 3, IntegrationStepResult>>>({});
-  const [hookInstalled, setHookInstalled] = useState(false);
+  const [stepResults, setStepResults] = useState<Partial<Record<1 | 2, IntegrationStepResult>>>({});
   const [verify, setVerify] = useState<IntegrationVerifyResult | null>(null);
   const [installPaths, setInstallPaths] = useState<string[]>([]);
 
@@ -57,7 +55,6 @@ export function IntegrationOnboarding({
     setInstallPersonal(true);
     setProjectRoots([]);
     setStepResults({});
-    setHookInstalled(false);
     setVerify(null);
     setInstallPaths([]);
   }, []);
@@ -86,7 +83,7 @@ export function IntegrationOnboarding({
     projectRoots,
   });
 
-  const runStep = async (which: 1 | 2 | 3) => {
+  const runStep = async (which: 1 | 2) => {
     setBusy(true);
     try {
       if (which === 2) {
@@ -111,20 +108,13 @@ export function IntegrationOnboarding({
         return;
       }
 
-      const result = await window.yanshuf.integration.installStep(
-        which === 1 ? 'mcp' : 'hook',
-        client,
-      );
-      setStepResults((prev) => ({ ...prev, [which]: result }));
+      const result = await window.yanshuf.integration.installStep('mcp', client);
+      setStepResults((prev) => ({ ...prev, [1]: result }));
       if (!result.ok) {
-        notifyActionFailed(`install step ${which}`, new Error(result.message));
+        notifyActionFailed('install MCP entry', new Error(result.message));
         return;
       }
-      if (which === 1) {
-        setStep(2);
-      } else {
-        setHookInstalled(true);
-      }
+      setStep(2);
     } catch (error) {
       notifyActionFailed(`install step ${which}`, error);
     } finally {
@@ -137,7 +127,7 @@ export function IntegrationOnboarding({
     try {
       const result = await window.yanshuf.integration.verify(client, verifyParams());
       setVerify(result);
-      setStep(4);
+      setStep(3);
       const criticalOk = verifyAllCritical(result);
       if (criticalOk) {
         await window.yanshuf.integration.record(client, skillTargets(), true);
@@ -176,14 +166,13 @@ export function IntegrationOnboarding({
             </div>
             <DialogTitle>Add to {CLIENT_LABEL[client]}</DialogTitle>
             <DialogDescription>
-              Connect Yanshuf MCP, install the /yanshuf skill, and set up session cleanup.
+              Connect Yanshuf MCP and install the /yanshuf skill.
             </DialogDescription>
           </DialogHeader>
           {prereqs && (
             <IntegrationStepper
               step={step}
               verify={verify}
-              hookInstalled={hookInstalled}
               prerequisitesSkipped={prerequisitesSkipped}
               className="mt-5"
             />
@@ -221,15 +210,6 @@ export function IntegrationOnboarding({
             />
           )}
           {step === 3 && (
-            <HookStep
-              busy={busy}
-              result={stepResults[3]}
-              hookInstalled={hookInstalled}
-              onInstall={() => void runStep(3)}
-              onVerify={() => void runVerify()}
-            />
-          )}
-          {step === 4 && (
             <VerifyStep
               client={client}
               verify={verify}

@@ -29,7 +29,6 @@ export interface IntegrationStepResult {
 export interface IntegrationVerifyResult {
   mcpConfigured: boolean;
   skillInstalled: boolean;
-  hookInstalled: boolean;
   apiReachable: boolean;
   certTrusted: boolean;
   nodeOk: boolean;
@@ -55,14 +54,11 @@ export interface IntegrationSkillRecord {
 export interface IntegrationClientRecord {
   client: IntegrationClient;
   mcpInstalled: boolean;
-  hookInstalled: boolean;
   bundleVersion: string;
   skillContentHash: string;
   paths: {
     mcpConfig: string;
-    hookConfig: string;
     mcpEntry: string;
-    hookScript: string;
   };
   skills: IntegrationSkillRecord[];
   installedAt: string;
@@ -117,7 +113,6 @@ export interface IntegrationClientStatus {
   bundleVersion: string;
   outdated: boolean;
   mcp: IntegrationClientComponentStatus;
-  hook: IntegrationClientComponentStatus;
   skills: IntegrationSkillStatus[];
   hasAnyConfigured: boolean;
 }
@@ -137,7 +132,7 @@ export interface IntegrationStatusResult {
   hasAnyInstall: boolean;
 }
 
-export type IntegrationUninstallScope = 'mcp' | 'hook' | 'skill' | 'client';
+export type IntegrationUninstallScope = 'mcp' | 'skill' | 'client';
 
 export interface IntegrationUninstallPayload {
   client: IntegrationClient;

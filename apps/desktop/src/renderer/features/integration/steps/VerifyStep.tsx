@@ -20,7 +20,6 @@ const CHECKS: { key: keyof IntegrationVerifyResult; label: string; optional?: bo
   { key: 'nodeOk', label: 'Node.js (from Yanshuf)', optional: true },
   { key: 'mcpConfigured', label: 'MCP configured' },
   { key: 'skillInstalled', label: 'Skill installed' },
-  { key: 'hookInstalled', label: 'SessionEnd hook' },
   { key: 'apiReachable', label: 'API reachable', optional: true },
   { key: 'certTrusted', label: 'Certificate trusted', optional: true },
 ];

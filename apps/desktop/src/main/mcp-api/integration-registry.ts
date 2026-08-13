@@ -16,17 +16,14 @@ import type {
 import type { JsonFileStore } from '../storage/json-store';
 import {
   bundledIntegrationManifest,
-  detectHookConfigured,
   detectMcpConfigured,
   detectSkillConfigured,
   getClientConfigPaths,
   installMcpEntry,
-  installSessionEndHook,
   installSkill,
+  removeLegacySessionEndHook,
   uninstallMcpEntry,
-  uninstallSessionEndHook,
   uninstallSkillPath,
-  updateHookPath,
   updateMcpEntryPath,
 } from './integration';
 import { checkPrerequisites } from './integration-prerequisites';
@@ -46,10 +43,9 @@ function migrateRegistry(raw: IntegrationRegistry & { installs?: IntegrationInst
       clientRecord = {
         client: install.client,
         mcpInstalled: true,
-        hookInstalled: true,
         bundleVersion: install.bundleVersion,
         skillContentHash: install.skillContentHash,
-        paths: install.paths,
+        paths: { mcpConfig: install.paths.mcpConfig, mcpEntry: install.paths.mcpEntry },
         skills: [],
         installedAt: install.installedAt,
       };
@@ -100,15 +96,9 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       record = {
         client,
         mcpInstalled: false,
-        hookInstalled: false,
         bundleVersion: manifest.bundleVersion,
         skillContentHash: manifest.skillContentHash,
-        paths: {
-          mcpConfig: paths.mcpConfig,
-          hookConfig: paths.hookConfig,
-          mcpEntry: paths.mcpEntry,
-          hookScript: paths.cleanupSessionScript,
-        },
+        paths: { mcpConfig: paths.mcpConfig, mcpEntry: paths.mcpEntry },
         skills: [],
         installedAt: new Date().toISOString(),
       };
@@ -124,7 +114,6 @@ export function createIntegrationRegistry(store: JsonFileStore) {
   ): Promise<IntegrationClientStatus | null> {
     const paths = getClientConfigPaths(client);
     const mcpConfigured = await detectMcpConfigured(client);
-    const hookConfigured = await detectHookConfigured(client);
 
     const skillStatuses = await Promise.all(
       (clientRecord?.skills ?? []).map(async (skill) => {
@@ -151,8 +140,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
         clientRecord.skillContentHash !== manifest.skillContentHash ||
         skillStatuses.some((s) => s.outdated));
 
-    const hasAnyConfigured =
-      mcpConfigured || hookConfigured || skillStatuses.some((s) => s.configured);
+    const hasAnyConfigured = mcpConfigured || skillStatuses.some((s) => s.configured);
 
     if (!hasAnyConfigured && !clientRecord) return null;
 
@@ -166,13 +154,6 @@ export function createIntegrationRegistry(store: JsonFileStore) {
         path: paths.mcpEntry,
         configPath: paths.mcpConfig,
         outdated: clientOutdated && (clientRecord?.mcpInstalled ?? false),
-      },
-      hook: {
-        configured: hookConfigured,
-        tracked: clientRecord?.hookInstalled ?? false,
-        path: paths.cleanupSessionScript,
-        configPath: paths.hookConfig,
-        outdated: false,
       },
       skills: skillStatuses,
       hasAnyConfigured,
@@ -218,16 +199,10 @@ export function createIntegrationRegistry(store: JsonFileStore) {
     const clientRecord = getOrCreateClientRecord(registry, client);
 
     clientRecord.mcpInstalled = true;
-    clientRecord.hookInstalled = true;
     clientRecord.bundleVersion = manifest.bundleVersion;
     clientRecord.skillContentHash = manifest.skillContentHash;
     clientRecord.installedAt = now;
-    clientRecord.paths = {
-      mcpConfig: paths.mcpConfig,
-      hookConfig: paths.hookConfig,
-      mcpEntry: paths.mcpEntry,
-      hookScript: paths.cleanupSessionScript,
-    };
+    clientRecord.paths = { mcpConfig: paths.mcpConfig, mcpEntry: paths.mcpEntry };
 
     const created: IntegrationSkillRecord[] = [];
 
@@ -271,7 +246,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
 
       const paths = getClientConfigPaths(clientRecord.client);
       await updateMcpEntryPath(clientRecord.client);
-      await updateHookPath(clientRecord.client);
+      await removeLegacySessionEndHook(clientRecord.client);
 
       const target: SkillInstallTarget =
         skill.kind === 'personal'
@@ -288,7 +263,6 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       clientRecord.bundleVersion = manifest.bundleVersion;
       clientRecord.skillContentHash = manifest.skillContentHash;
       clientRecord.paths.mcpEntry = paths.mcpEntry;
-      clientRecord.paths.hookScript = paths.cleanupSessionScript;
 
       await saveRegistry(registry);
       return { ok: true, message: `Updated ${skill.path}` };
@@ -318,7 +292,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       if (clientRecord && !clientsSeen.has(clientRecord.client)) {
         clientsSeen.add(clientRecord.client);
         await updateMcpEntryPath(clientRecord.client);
-        await updateHookPath(clientRecord.client);
+        await removeLegacySessionEndHook(clientRecord.client);
       }
       const result = await updateInstallRecord(skillId);
       results.push({ id: skillId, ...result });
@@ -336,20 +310,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       if (!result.ok) return result;
       if (clientRecord) {
         clientRecord.mcpInstalled = false;
-        if (!clientRecord.hookInstalled && clientRecord.skills.length === 0) {
-          registry.clients = registry.clients.filter((c) => c.client !== payload.client);
-        }
-        await saveRegistry(registry);
-      }
-      return { ok: true, message: result.message };
-    }
-
-    if (payload.scope === 'hook') {
-      const result = await uninstallSessionEndHook(payload.client);
-      if (!result.ok) return result;
-      if (clientRecord) {
-        clientRecord.hookInstalled = false;
-        if (!clientRecord.mcpInstalled && clientRecord.skills.length === 0) {
+        if (clientRecord.skills.length === 0) {
           registry.clients = registry.clients.filter((c) => c.client !== payload.client);
         }
         await saveRegistry(registry);
@@ -360,14 +321,13 @@ export function createIntegrationRegistry(store: JsonFileStore) {
     if (payload.scope === 'client') {
       if (clientRecord) {
         if (clientRecord.mcpInstalled) await uninstallMcpEntry(payload.client);
-        if (clientRecord.hookInstalled) await uninstallSessionEndHook(payload.client);
         for (const skill of clientRecord.skills) {
           await uninstallSkillPath(skill.path);
         }
       } else {
         await uninstallMcpEntry(payload.client);
-        await uninstallSessionEndHook(payload.client);
       }
+      await removeLegacySessionEndHook(payload.client);
       registry.clients = registry.clients.filter((c) => c.client !== payload.client);
       await saveRegistry(registry);
       return { ok: true, message: `Uninstalled all Yanshuf components from ${payload.client}.` };
@@ -384,7 +344,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
       const result = await uninstallSkillPath(skill.path);
       if (!result.ok) return result;
       clientRecord.skills = clientRecord.skills.filter((s) => s.id !== payload.skillId);
-      if (!clientRecord.mcpInstalled && !clientRecord.hookInstalled && clientRecord.skills.length === 0) {
+      if (!clientRecord.mcpInstalled && clientRecord.skills.length === 0) {
         registry.clients = registry.clients.filter((c) => c.client !== payload.client);
       }
       await saveRegistry(registry);
@@ -413,7 +373,7 @@ export function createIntegrationRegistry(store: JsonFileStore) {
 
   async function ensureClientBasics(client: IntegrationClient): Promise<void> {
     await installMcpEntry(client);
-    await installSessionEndHook(client);
+    await removeLegacySessionEndHook(client);
   }
 
   return {
