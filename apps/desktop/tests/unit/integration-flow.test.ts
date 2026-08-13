@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getInitialStep,
-  getStepperFlowStep,
+  stepIndexToFlowStep,
   isIntegrationStepComplete,
   verifyAllCritical,
 } from '../../src/renderer/features/integration/integration-flow';
@@ -26,23 +26,22 @@ describe('integration-flow', () => {
     expect(getInitialStep(prereqs)).toBe(0);
   });
 
-  it('verify step complete without node when MCP, skill, and hook pass', () => {
+  it('verify step complete without node when MCP and skill pass', () => {
     const withoutNode: IntegrationVerifyResult = {
       mcpConfigured: true,
       skillInstalled: true,
-      hookInstalled: true,
       apiReachable: false,
       certTrusted: false,
       nodeOk: false,
       details: [],
     };
-    expect(isIntegrationStepComplete('verify', 4, withoutNode)).toBe(true);
+    expect(isIntegrationStepComplete('verify', 3, withoutNode)).toBe(true);
     expect(verifyAllCritical(withoutNode)).toBe(true);
   });
 
-  it('shows verify as current after hook installed on step 3', () => {
-    expect(getStepperFlowStep(3, true)).toBe('verify');
-    expect(isIntegrationStepComplete('hook', 3, null, true)).toBe(true);
-    expect(isIntegrationStepComplete('verify', 3, null, true)).toBe(false);
+  it('maps step 3 to verify and treats earlier steps as complete', () => {
+    expect(stepIndexToFlowStep(3)).toBe('verify');
+    expect(isIntegrationStepComplete('skills', 3, null)).toBe(true);
+    expect(isIntegrationStepComplete('verify', 3, null)).toBe(false);
   });
 });

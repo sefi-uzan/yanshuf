@@ -94,10 +94,9 @@ export interface YanshufAPI {
     ) => Promise<{
       mcp: { ok: boolean; message: string; path?: string };
       skill: { ok: boolean; message: string; path?: string };
-      hook: { ok: boolean; message: string; path?: string };
     }>;
     installStep: (
-      step: 'mcp' | 'skill' | 'hook',
+      step: 'mcp' | 'skill',
       client: IntegrationClient,
       target?: SkillInstallTarget,
     ) => Promise<{ ok: boolean; message: string; path?: string }>;

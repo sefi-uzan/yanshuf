@@ -2,7 +2,7 @@ import { Check, Circle } from 'lucide-react';
 import { cn } from '@yanshuf/ui/lib/utils';
 import {
   INTEGRATION_FLOW_STEPS,
-  getStepperFlowStep,
+  stepIndexToFlowStep,
   isIntegrationStepComplete,
   type WizardStepIndex,
 } from './integration-flow';
@@ -11,7 +11,6 @@ import type { IntegrationVerifyResult } from '@yanshuf/shared';
 interface IntegrationStepperProps {
   step: WizardStepIndex;
   verify: IntegrationVerifyResult | null;
-  hookInstalled: boolean;
   prerequisitesSkipped: boolean;
   className?: string;
 }
@@ -19,11 +18,10 @@ interface IntegrationStepperProps {
 export function IntegrationStepper({
   step,
   verify,
-  hookInstalled,
   prerequisitesSkipped,
   className,
 }: IntegrationStepperProps) {
-  const current = getStepperFlowStep(step, hookInstalled);
+  const current = stepIndexToFlowStep(step);
   const visibleSteps = prerequisitesSkipped
     ? INTEGRATION_FLOW_STEPS.filter((s) => s.id !== 'prerequisites')
     : INTEGRATION_FLOW_STEPS;
@@ -31,7 +29,7 @@ export function IntegrationStepper({
   return (
     <ol className={cn('flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5', className)}>
       {visibleSteps.map((flowStep, index) => {
-        const done = isIntegrationStepComplete(flowStep.id, step, verify, hookInstalled);
+        const done = isIntegrationStepComplete(flowStep.id, step, verify);
         const isCurrent = flowStep.id === current;
         const isVerifyReady = flowStep.id === 'verify' && done;
 

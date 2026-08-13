@@ -51,7 +51,6 @@ import {
   verifyIntegration,
   installMcpEntry,
   installSkill,
-  installSessionEndHook,
   type IntegrationClient,
 } from './mcp-api/integration';
 import { checkPrerequisites } from './mcp-api/integration-prerequisites';
@@ -675,16 +674,13 @@ function registerIpc(): void {
     IPC_CHANNELS.MCP_INTEGRATION_INSTALL_STEP,
     async (
       _e,
-      step: 'mcp' | 'skill' | 'hook',
+      step: 'mcp' | 'skill',
       client: IntegrationClient,
       target?: SkillInstallTarget,
     ) => {
       if (step === 'mcp') return installMcpEntry(client);
-      if (step === 'skill') {
-        if (!target) throw new Error('Skill install target is required');
-        return installSkill(client, target);
-      }
-      return installSessionEndHook(client);
+      if (!target) throw new Error('Skill install target is required');
+      return installSkill(client, target);
     },
   );
 

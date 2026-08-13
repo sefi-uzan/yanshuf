@@ -377,7 +377,7 @@ function ClientIntegrationCard({
               onUninstall(
                 { client: clientStatus.client, scope: 'client' },
                 `Uninstall all from ${label}?`,
-                `Removes the MCP entry, sessionEnd hook, and all tracked /yanshuf skills for ${label}. This cannot be undone.`,
+                `Removes the MCP entry and all tracked /yanshuf skills for ${label}. This cannot be undone.`,
               )
             }
           >
@@ -398,22 +398,6 @@ function ClientIntegrationCard({
                 { client: clientStatus.client, scope: 'mcp' },
                 `Remove MCP from ${label}?`,
                 `Removes the yanshuf MCP server entry from ${clientStatus.mcp.configPath ?? 'config'}.`,
-              )
-            }
-          />
-        )}
-        {(clientStatus.hook.configured || clientStatus.hook.tracked) && (
-          <ComponentRow
-            name="Hook - SessionEnd"
-            path={clientStatus.hook.configPath ?? clientStatus.hook.path}
-            configured={clientStatus.hook.configured}
-            outdated={false}
-            busy={busy}
-            onRemove={() =>
-              onUninstall(
-                { client: clientStatus.client, scope: 'hook' },
-                `Remove hook from ${label}?`,
-                `Removes the Yanshuf sessionEnd cleanup hook from ${clientStatus.hook.configPath ?? 'config'}.`,
               )
             }
           />

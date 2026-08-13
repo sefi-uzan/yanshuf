@@ -67,7 +67,9 @@ export class YanshufApiClient {
     try {
       res = await fetch(url, { method, headers, body: payload });
     } catch {
-      throw new Error('Yanshuf is not running. Launch the app first.');
+      throw new Error(
+        'Yanshuf is not running. Ask the user to launch the Yanshuf app, then retry this MCP tool. Do not call the local HTTP API directly.',
+      );
     }
 
     const text = await res.text();
